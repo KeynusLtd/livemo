@@ -20,6 +20,7 @@ export type Listing = {
   certifications?: string[];
   ageMonths?: number;
   seller?: SellerInfo;
+  currency?: string;
 };
 
 export type LivestockQuery = {
@@ -71,8 +72,9 @@ export async function fetchLivestock(query: LivestockQuery) {
 }
 
 export async function fetchProducts(query: ProductQuery) {
+  const queryWithType = { ...query, type: 'product' };
   const res = await apiRequest<MaybeListResponse<Listing>>(
-    `/marketplace/products${toQueryString(query as any)}`
+    `/marketplace/listings${toQueryString(queryWithType as any)}`
   );
   return normalizeListResponse(res);
 }

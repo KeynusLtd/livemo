@@ -1,0 +1,27 @@
+#!/usr/bin/env php
+<?php
+
+use Illuminate\Console\Application;
+
+define('LARAVEL_START', microtime(true));
+
+// Register the Auto Loader...
+require __DIR__ . '/vendor/autoload.php';
+
+// Run The Application...
+(require_once __DIR__ . '/bootstrap/app.php')
+    ->handleCommand(new Application(
+        (new Illuminate\Foundation\Application(dirname(__DIR__)))
+            ->withRouting(
+                web: __DIR__.'/routes/web.php',
+                api: __DIR__.'/routes/api.php',
+                commands: __DIR__.'/routes/console.php',
+                health: '/up',
+            )
+            ->withMiddleware(function ($middleware) {
+                //
+            })
+            ->withExceptions(function ($exceptions) {
+                //
+            })->create()
+    ));

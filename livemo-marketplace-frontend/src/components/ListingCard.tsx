@@ -73,7 +73,11 @@ export function ListingCard({ listing }: { listing: Listing }) {
                 color: t.palette.primary.main,
               })}
             >
-              {listing.price.toFixed(2)}
+              {new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: listing.currency || 'USD',
+                maximumFractionDigits: 0
+              }).format(listing.price)}
             </Typography>
           </Stack>
         </CardContent>

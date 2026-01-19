@@ -85,7 +85,11 @@ export function ListingDetailPage() {
             </Stack>
 
             <Typography variant="h5" fontWeight={900}>
-              {data.price.toFixed(2)}
+              {new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: data.currency || 'USD',
+                maximumFractionDigits: 0
+              }).format(data.price)}
             </Typography>
 
             {data.location && <Typography color="text.secondary">{data.location}</Typography>}
@@ -94,7 +98,13 @@ export function ListingDetailPage() {
               variant="contained"
               color="primary"
               onClick={() =>
-                addItem({ id: data.id, title: data.title, price: data.price, imageUrl: data.imageUrl }, 1)
+                addItem({
+                  id: data.id,
+                  title: data.title,
+                  price: data.price,
+                  imageUrl: data.imageUrl,
+                  currency: data.currency
+                }, 1)
               }
             >
               Add to cart
@@ -142,42 +152,41 @@ export function ListingDetailPage() {
         </Grid>
 
         <Grid item xs={12} md={4}>
-          {data.type === "livestock" && (
-            <Card sx={{ borderRadius: 3 }}>
-              <CardContent>
-                <Typography variant="h6" fontWeight={800}>
-                  Seller / Farmer
-                </Typography>
-                <Divider sx={{ my: 2 }} />
+          <Card sx={{ borderRadius: 3 }}>
+            <CardContent>
+              <Typography variant="h6" fontWeight={800}>
+                {data.type === "livestock" ? "Seller / Farmer" : "Seller / Merchant"}
+              </Typography>
+              <Divider sx={{ my: 2 }} />
 
-                {data.seller ? (
-                  <Stack spacing={2}>
-                    <Stack direction="row" spacing={2} alignItems="center">
-                      <Avatar>{(data.seller.farmName || "F").slice(0, 1)}</Avatar>
-                      <Box>
-                        <Typography fontWeight={900}>{data.seller.farmName}</Typography>
-                        {data.seller.location && (
-                          <Typography color="text.secondary">{data.seller.location}</Typography>
-                        )}
-                      </Box>
-                    </Stack>
-
-                    {data.seller.profileUrl && (
-                      <Button component={RouterLink} to={data.seller.profileUrl} variant="outlined">
-                        View profile
-                      </Button>
-                    )}
+              {data.seller ? (
+                <Stack spacing={2}>
+                  <Stack direction="row" spacing={2} alignItems="center">
+                    <Avatar>{(data.seller.farmName || "F").slice(0, 1)}</Avatar>
+                    <Box>
+                      <Typography fontWeight={900}>{data.seller.farmName}</Typography>
+                      {data.seller.location && (
+                        <Typography color="text.secondary">{data.seller.location}</Typography>
+                      )}
+                    </Box>
                   </Stack>
-                ) : (
-                  <Typography color="text.secondary">
-                    Seller information is not available for this listing.
-                  </Typography>
-                )}
-              </CardContent>
-            </Card>
-          )}
+
+                  {data.seller.profileUrl && (
+                    <Button component={RouterLink} to={data.seller.profileUrl} variant="outlined">
+                      View profile
+                    </Button>
+                  )}
+                </Stack>
+              ) : (
+                <Typography color="text.secondary">
+                  Seller information is not available for this listing.
+                </Typography>
+              )}
+            </CardContent>
+          </Card>
         </Grid>
       </Grid>
     </Stack>
   );
 }
+
