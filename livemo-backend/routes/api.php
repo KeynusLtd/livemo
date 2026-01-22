@@ -51,11 +51,10 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::get('/alerts/{alert}', [AlertController::class, 'show']);
     Route::put('/alerts/{alert}/acknowledge', [AlertController::class, 'acknowledge']);
     Route::put('/alerts/{alert}/resolve', [AlertController::class, 'resolve']);
-    Route::put('/alerts/{alert}/resolve', [AlertController::class, 'resolve']);
     Route::get('/alerts/stats', [AlertController::class, 'stats']);
 
     // Admin Routes
-    Route::prefix('admin')->group(function () {
+    Route::prefix('admin')->middleware('admin')->group(function () {
         Route::get('/stats', [AdminController::class, 'stats']);
         Route::get('/users', [AdminController::class, 'users']);
         Route::put('/users/{id}/status', [AdminController::class, 'updateUserStatus']);

@@ -20,9 +20,9 @@ class AdminController extends Controller
             'total_users' => User::count(),
             'active_listings' => Listing::where('status', 'active')->count(),
             'total_orders' => Order::count(),
-            'revenue' => Order::where('status', 'completed')->sum('total_amount'), // Assuming total_amount
+            'revenue' => Order::where('payment_status', 'completed')->sum('total'),
             'recent_users' => User::latest()->take(5)->get(),
-            'pending_listings' => Listing::where('status', 'pending')->count(),
+            'pending_listings' => Listing::where('status', 'pending_review')->count(),
         ];
 
         return response()->json($stats);
@@ -89,10 +89,12 @@ class AdminController extends Controller
      */
     public function listings(Request $request)
     {
-        // Assuming Listing model
-        $query = Listing::with('user');
+        $query = Listing::with(['seller', 'listable']);
 
-        if ($request->has('status')) {
+        if ($request->filled('status')) {
+            $request->validate([
+                'status' => 'in:draft,active,sold,inactive,pending_review',
+            ]);
             $query->where('status', $request->status);
         }
 
@@ -109,7 +111,7 @@ class AdminController extends Controller
         $listing = Listing::findOrFail($id);
 
         $validated = $request->validate([
-            'status' => 'required|in:active,pending,rejected,sold',
+            'status' => 'required|in:draft,active,sold,inactive,pending_review',
         ]);
 
         $listing->status = $request->status;
@@ -123,7 +125,7 @@ class AdminController extends Controller
      */
     public function transactions(Request $request)
     {
-        $query = Order::with(['user', 'items']); // Assuming relationships
+        $query = Order::with(['buyer', 'seller', 'items.listing']);
 
         $transactions = $query->latest()->paginate(20);
 
