@@ -10,12 +10,18 @@ use Illuminate\Http\Request;
 
 class AnimalController extends Controller
 {
+    protected function userFarmIds(Request $request)
+    {
+        return Farm::where('user_id', $request->user()->id)->pluck('id');
+    }
+
     /**
      * Display a listing of animals.
      */
     public function index(Request $request): JsonResponse
     {
-        $query = Animal::query();
+        $farmIds = $this->userFarmIds($request);
+        $query = Animal::query()->whereIn('farm_id', $farmIds);
 
         // Filter by farm if specified
         if ($request->has('farm_id')) {
@@ -70,7 +76,9 @@ class AnimalController extends Controller
 
         // Verify farm ownership
         $farm = Farm::findOrFail($validated['farm_id']);
-        $this->authorize('update', $farm);
+        if ($farm->user_id !== $request->user()->id) {
+            abort(403);
+        }
 
         $animal = Animal::create($validated);
 
@@ -83,8 +91,13 @@ class AnimalController extends Controller
     /**
      * Display the specified animal.
      */
-    public function show(Animal $animal): JsonResponse
+    public function show(Request $request, Animal $animal): JsonResponse
     {
+        $animal->loadMissing('farm');
+        if ($animal->farm && $animal->farm->user_id !== $request->user()->id) {
+            abort(403);
+        }
+
         $animal->load([
             'farm',
             'mother',
@@ -109,6 +122,11 @@ class AnimalController extends Controller
      */
     public function update(Request $request, Animal $animal): JsonResponse
     {
+        $animal->loadMissing('farm');
+        if ($animal->farm && $animal->farm->user_id !== $request->user()->id) {
+            abort(403);
+        }
+
         $validated = $request->validate([
             'name' => 'sometimes|string|max:255',
             'breed' => 'nullable|string|max:100',
@@ -130,8 +148,13 @@ class AnimalController extends Controller
     /**
      * Remove the specified animal.
      */
-    public function destroy(Animal $animal): JsonResponse
+    public function destroy(Request $request, Animal $animal): JsonResponse
     {
+        $animal->loadMissing('farm');
+        if ($animal->farm && $animal->farm->user_id !== $request->user()->id) {
+            abort(403);
+        }
+
         $animal->delete();
 
         return response()->json([
@@ -142,8 +165,13 @@ class AnimalController extends Controller
     /**
      * Get health history for an animal.
      */
-    public function health(Animal $animal): JsonResponse
+    public function health(Request $request, Animal $animal): JsonResponse
     {
+        $animal->loadMissing('farm');
+        if ($animal->farm && $animal->farm->user_id !== $request->user()->id) {
+            abort(403);
+        }
+
         $healthRecords = $animal->healthRecords()
             ->orderBy('created_at', 'desc')
             ->paginate(20);
@@ -159,8 +187,13 @@ class AnimalController extends Controller
     /**
      * Get activity timeline for an animal.
      */
-    public function timeline(Animal $animal): JsonResponse
+    public function timeline(Request $request, Animal $animal): JsonResponse
     {
+        $animal->loadMissing('farm');
+        if ($animal->farm && $animal->farm->user_id !== $request->user()->id) {
+            abort(403);
+        }
+
         $timeline = [];
 
         // Get recent health records

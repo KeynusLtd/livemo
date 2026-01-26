@@ -12,63 +12,72 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MessageSquare, Plus, ShoppingCart, Store, TrendingUp } from "lucide-react";
+import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useActiveFarm } from "@/hooks/useActiveFarm";
+import {
+  getFarmEarnings,
+  listFarmListings,
+  listFarmOrders,
+} from "@/lib/marketplaceApi";
+import type { Listing, Order } from "@/lib/marketplaceApi";
 
-const livestockListings = [
-  {
-    id: "LIV-001",
-    title: "Dairy Cow (Healthy)",
-    price: "R 18,000",
-    status: "active" as const,
-    views: 124,
-    inquiries: 6,
-  },
-  {
-    id: "LIV-002",
-    title: "Meat Goat (2 years)",
-    price: "R 1,800",
-    status: "paused" as const,
-    views: 52,
-    inquiries: 1,
-  },
-];
-
-const productListings = [
-  {
-    id: "PROD-010",
-    title: "Fresh Milk (20L)",
-    price: "R 320",
-    status: "active" as const,
-    views: 88,
-    inquiries: 4,
-  },
-  {
-    id: "PROD-011",
-    title: "Free-range Eggs (Tray)",
-    price: "R 95",
-    status: "active" as const,
-    views: 143,
-    inquiries: 12,
-  },
-];
-
-const recentOrders = [
-  {
-    id: "ORD-1001",
-    item: "Free-range Eggs (Tray)",
-    amount: "R 190",
-    status: "processing" as const,
-    time: "Today",
-  },
-  {
-    id: "ORD-1000",
-    item: "Fresh Milk (20L)",
-    amount: "R 320",
-    status: "completed" as const,
-    time: "Yesterday",
-  },
-];
+function formatMoney(amount: number, currency: string) {
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  } catch {
+    return `${currency} ${amount.toFixed(2)}`;
+  }
+}
 
 export default function Marketplace() {
+  const { activeFarmId } = useActiveFarm();
+  const [search, setSearch] = useState("");
+  const [category, setCategory] = useState("all");
+  const [ordersPage, setOrdersPage] = useState(1);
+
+  const listingsQuery = useQuery({
+    queryKey: ["farmListings", activeFarmId, category],
+    queryFn: () =>
+      listFarmListings({
+        farmId: activeFarmId as number,
+        page: 1,
+        type: category === "livestock" ? "livestock" : category === "products" ? "product" : undefined,
+      }),
+    enabled: activeFarmId != null,
+    staleTime: 10_000,
+  });
+
+  const ordersQuery = useQuery({
+    queryKey: ["farmOrders", activeFarmId, ordersPage],
+    queryFn: () => listFarmOrders({ farmId: activeFarmId as number, page: ordersPage }),
+    enabled: activeFarmId != null,
+    staleTime: 10_000,
+  });
+
+  const earningsQuery = useQuery({
+    queryKey: ["farmEarnings", activeFarmId],
+    queryFn: () => getFarmEarnings({ farmId: activeFarmId as number, days: 30 }),
+    enabled: activeFarmId != null,
+    staleTime: 30_000,
+  });
+
+  const listings: Listing[] = listingsQuery.data?.data ?? [];
+  const orders: Order[] = ordersQuery.data?.data ?? [];
+  const earnings = earningsQuery.data;
+
+  const filteredListings = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (q.length === 0) return listings;
+    return listings.filter((l) => l.title.toLowerCase().includes(q) || l.description.toLowerCase().includes(q));
+  }, [listings, search]);
+
+  const activeListingsCount = listings.filter((l) => l.status === "active").length;
+
   return (
     <Layout>
       <div className="space-y-6">
@@ -91,7 +100,9 @@ export default function Marketplace() {
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <p className="text-sm font-medium text-muted-foreground">Active Listings</p>
-                  <h3 className="mt-2 text-3xl font-bold text-foreground">4</h3>
+                  <h3 className="mt-2 text-3xl font-bold text-foreground">
+                    {activeFarmId == null ? 0 : activeListingsCount}
+                  </h3>
                   <Badge className="mt-2 bg-success text-success-foreground">Live</Badge>
                 </div>
                 <div className="rounded-lg bg-gradient-pasture p-3 text-white">
@@ -106,7 +117,9 @@ export default function Marketplace() {
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <p className="text-sm font-medium text-muted-foreground">Orders (30d)</p>
-                  <h3 className="mt-2 text-3xl font-bold text-foreground">18</h3>
+                  <h3 className="mt-2 text-3xl font-bold text-foreground">
+                    {earnings?.orders_count ?? 0}
+                  </h3>
                   <Badge className="mt-2 bg-sky text-white">On Track</Badge>
                 </div>
                 <div className="rounded-lg bg-gradient-earth p-3 text-white">
@@ -121,7 +134,9 @@ export default function Marketplace() {
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <p className="text-sm font-medium text-muted-foreground">Earnings</p>
-                  <h3 className="mt-2 text-3xl font-bold text-foreground">R 48,200</h3>
+                  <h3 className="mt-2 text-3xl font-bold text-foreground">
+                    {earnings ? formatMoney(earnings.revenue_total, "USD") : "USD 0.00"}
+                  </h3>
                   <p className="mt-2 text-sm text-muted-foreground">This month</p>
                 </div>
                 <div className="rounded-lg bg-barn p-3 text-white">
@@ -145,9 +160,13 @@ export default function Marketplace() {
                   <span>Manage Listings</span>
                   <div className="flex w-full flex-col gap-3 md:w-auto md:flex-row md:items-center">
                     <div className="w-full md:w-64">
-                      <Input placeholder="Search listings..." />
+                      <Input
+                        placeholder="Search listings..."
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                      />
                     </div>
-                    <Select defaultValue="all">
+                    <Select value={category} onValueChange={(v) => setCategory(v)}>
                       <SelectTrigger className="w-full md:w-48">
                         <SelectValue placeholder="Category" />
                       </SelectTrigger>
@@ -161,19 +180,30 @@ export default function Marketplace() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-6">
+                {activeFarmId == null ? (
+                  <div className="text-sm text-muted-foreground">Select a farm to view marketplace data.</div>
+                ) : listingsQuery.isLoading ? (
+                  <div className="text-sm text-muted-foreground">Loading listings...</div>
+                ) : listingsQuery.isError ? (
+                  <div className="text-sm text-destructive">
+                    {listingsQuery.error instanceof Error
+                      ? listingsQuery.error.message
+                      : "Failed to load listings"}
+                  </div>
+                ) : (
                   <div className="space-y-3">
-                    <p className="text-sm font-medium text-muted-foreground">Livestock Marketplace</p>
-                    {livestockListings.map((l) => (
+                    {filteredListings.map((l) => (
                       <div
                         key={l.id}
                         className="flex flex-col gap-3 rounded-lg border border-border p-4 md:flex-row md:items-center md:justify-between"
                       >
                         <div>
                           <p className="font-medium">{l.title}</p>
-                          <p className="text-sm text-muted-foreground">{l.price}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {formatMoney(l.price, l.currency)}
+                          </p>
                           <p className="mt-1 text-xs text-muted-foreground">
-                            {l.views} views • {l.inquiries} inquiries
+                            {l.views_count ?? 0} views
                           </p>
                         </div>
                         <div className="flex items-center justify-between gap-3 md:justify-end">
@@ -181,15 +211,17 @@ export default function Marketplace() {
                             className={
                               l.status === "active"
                                 ? "bg-success text-success-foreground"
-                                : "bg-warning text-warning-foreground"
+                                : l.status === "paused"
+                                ? "bg-warning text-warning-foreground"
+                                : "bg-muted text-foreground"
                             }
                           >
                             {l.status}
                           </Badge>
-                          <Button variant="outline" size="sm">
+                          <Button variant="outline" size="sm" disabled>
                             Edit
                           </Button>
-                          <Button variant="outline" size="sm">
+                          <Button variant="outline" size="sm" disabled>
                             <MessageSquare className="mr-2 h-4 w-4" />
                             Messages
                           </Button>
@@ -197,35 +229,7 @@ export default function Marketplace() {
                       </div>
                     ))}
                   </div>
-
-                  <div className="space-y-3">
-                    <p className="text-sm font-medium text-muted-foreground">Products Marketplace</p>
-                    {productListings.map((l) => (
-                      <div
-                        key={l.id}
-                        className="flex flex-col gap-3 rounded-lg border border-border p-4 md:flex-row md:items-center md:justify-between"
-                      >
-                        <div>
-                          <p className="font-medium">{l.title}</p>
-                          <p className="text-sm text-muted-foreground">{l.price}</p>
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            {l.views} views • {l.inquiries} inquiries
-                          </p>
-                        </div>
-                        <div className="flex items-center justify-between gap-3 md:justify-end">
-                          <Badge className="bg-success text-success-foreground">{l.status}</Badge>
-                          <Button variant="outline" size="sm">
-                            Edit
-                          </Button>
-                          <Button variant="outline" size="sm">
-                            <MessageSquare className="mr-2 h-4 w-4" />
-                            Messages
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -236,35 +240,77 @@ export default function Marketplace() {
                 <CardTitle>Recent Orders</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-3">
-                  {recentOrders.map((o) => (
-                    <div
-                      key={o.id}
-                      className="flex flex-col gap-3 rounded-lg border border-border p-4 md:flex-row md:items-center md:justify-between"
-                    >
-                      <div>
-                        <p className="font-medium">{o.id}</p>
-                        <p className="text-sm text-muted-foreground">{o.item}</p>
-                        <p className="mt-1 text-xs text-muted-foreground">{o.time}</p>
-                      </div>
-                      <div className="flex items-center justify-between gap-3 md:justify-end">
-                        <p className="text-sm font-medium">{o.amount}</p>
-                        <Badge
-                          className={
-                            o.status === "completed"
-                              ? "bg-success text-success-foreground"
-                              : "bg-sky text-white"
-                          }
+                {activeFarmId == null ? (
+                  <div className="text-sm text-muted-foreground">Select a farm to view orders.</div>
+                ) : ordersQuery.isLoading ? (
+                  <div className="text-sm text-muted-foreground">Loading orders...</div>
+                ) : ordersQuery.isError ? (
+                  <div className="text-sm text-destructive">
+                    {ordersQuery.error instanceof Error
+                      ? ordersQuery.error.message
+                      : "Failed to load orders"}
+                  </div>
+                ) : (
+                  <>
+                    <div className="space-y-3">
+                      {orders.map((o) => (
+                        <div
+                          key={o.id}
+                          className="flex flex-col gap-3 rounded-lg border border-border p-4 md:flex-row md:items-center md:justify-between"
                         >
-                          {o.status}
-                        </Badge>
-                        <Button variant="outline" size="sm">
-                          View
+                          <div>
+                            <p className="font-medium">{o.order_number}</p>
+                            <p className="text-sm text-muted-foreground">
+                              Payment: {o.payment_status}
+                            </p>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {o.created_at ? new Date(o.created_at).toLocaleString() : ""}
+                            </p>
+                          </div>
+                          <div className="flex items-center justify-between gap-3 md:justify-end">
+                            <p className="text-sm font-medium">{formatMoney(o.total, o.currency)}</p>
+                            <Badge
+                              className={
+                                o.status === "completed" || o.status === "delivered"
+                                  ? "bg-success text-success-foreground"
+                                  : "bg-sky text-white"
+                              }
+                            >
+                              {o.status}
+                            </Badge>
+                            <Button variant="outline" size="sm" disabled>
+                              View
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2">
+                      <div className="text-sm text-muted-foreground">
+                        Page {ordersQuery.data?.current_page ?? 1} of {ordersQuery.data?.last_page ?? 1}
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={(ordersQuery.data?.current_page ?? 1) <= 1}
+                          onClick={() => setOrdersPage((p) => Math.max(1, p - 1))}
+                        >
+                          Previous
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={(ordersQuery.data?.current_page ?? 1) >= (ordersQuery.data?.last_page ?? 1)}
+                          onClick={() => setOrdersPage((p) => p + 1)}
+                        >
+                          Next
                         </Button>
                       </div>
                     </div>
-                  ))}
-                </div>
+                  </>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

@@ -4,14 +4,23 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Alert;
+use App\Models\AlertAction;
+use App\Models\Farm;
+use App\Events\AlertUpdated;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class AlertController extends Controller
 {
+    protected function userFarmIds(Request $request)
+    {
+        return Farm::where('user_id', $request->user()->id)->pluck('id');
+    }
+
     public function index(Request $request): JsonResponse
     {
-        $query = Alert::with(['farm', 'animal', 'sensor']);
+        $farmIds = $this->userFarmIds($request);
+        $query = Alert::with(['farm', 'animal', 'sensor'])->whereIn('farm_id', $farmIds);
 
         if ($request->has('farm_id')) {
             $query->where('farm_id', $request->farm_id);
@@ -30,14 +39,31 @@ class AlertController extends Controller
         return response()->json($alerts);
     }
 
-    public function show(Alert $alert): JsonResponse
+    public function show(Request $request, Alert $alert): JsonResponse
     {
+        $alert->loadMissing('farm');
+        if ($alert->farm && $alert->farm->user_id !== $request->user()->id) {
+            abort(403);
+        }
+
         return response()->json($alert->load(['farm', 'animal', 'sensor']));
     }
 
     public function acknowledge(Request $request, Alert $alert): JsonResponse
     {
+        if ($alert->farm && $alert->farm->user_id !== $request->user()->id) {
+            abort(403);
+        }
+
         $alert->acknowledge($request->user()->id);
+
+        AlertAction::create([
+            'alert_id' => $alert->id,
+            'user_id' => $request->user()->id,
+            'action_type' => 'acknowledged',
+        ]);
+
+        event(new AlertUpdated($alert, 'acknowledged'));
 
         return response()->json([
             'message' => 'Alert acknowledged successfully',
@@ -47,11 +73,24 @@ class AlertController extends Controller
 
     public function resolve(Request $request, Alert $alert): JsonResponse
     {
+        if ($alert->farm && $alert->farm->user_id !== $request->user()->id) {
+            abort(403);
+        }
+
         $validated = $request->validate([
             'resolution_notes' => 'nullable|string',
         ]);
 
         $alert->resolve($request->user()->id, $validated['resolution_notes'] ?? null);
+
+        AlertAction::create([
+            'alert_id' => $alert->id,
+            'user_id' => $request->user()->id,
+            'action_type' => 'resolved',
+            'notes' => $validated['resolution_notes'] ?? null,
+        ]);
+
+        event(new AlertUpdated($alert, 'resolved'));
 
         return response()->json([
             'message' => 'Alert resolved successfully',
@@ -63,7 +102,8 @@ class AlertController extends Controller
     {
         $farmId = $request->get('farm_id');
 
-        $query = Alert::query();
+        $farmIds = $this->userFarmIds($request);
+        $query = Alert::query()->whereIn('farm_id', $farmIds);
         if ($farmId) {
             $query->where('farm_id', $farmId);
         }

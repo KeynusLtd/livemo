@@ -12,10 +12,9 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('users', function (Blueprint $table) {
-            $table->string('role')->default('user')->after('email'); // admin, farmer, buyer
-            $table->string('status')->default('active')->after('role'); // active, suspended, pending
-            $table->boolean('is_verified')->default(false)->after('status');
-            $table->timestamp('verified_at')->nullable()->after('is_verified');
+            if (!Schema::hasColumn('users', 'status')) {
+                $table->string('status')->default('active')->after('email');
+            }
         });
     }
 
@@ -25,7 +24,9 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('users', function (Blueprint $table) {
-            $table->dropColumn(['role', 'status', 'is_verified', 'verified_at']);
+            if (Schema::hasColumn('users', 'status')) {
+                $table->dropColumn(['status']);
+            }
         });
     }
 };

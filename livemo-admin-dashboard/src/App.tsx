@@ -1,31 +1,45 @@
-import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import RequireAdmin from './routes/RequireAdmin';
 import AdminLayout from './layouts/AdminLayout';
 import Dashboard from './pages/Dashboard';
-import PlaceholderPage from './pages/PlaceholderPage';
+import Login from './pages/Login';
+import UsersPage from './pages/users/UsersPage';
+import UserVerificationPage from './pages/users/UserVerificationPage';
+import ListingsPage from './pages/listings/ListingsPage';
+import CategoriesPage from './pages/categories/CategoriesPage';
+import TransactionsPage from './pages/finance/TransactionsPage';
+import PayoutsPage from './pages/finance/PayoutsPage';
+import SettingsPage from './pages/system/SettingsPage';
+import HealthPage from './pages/system/HealthPage';
+import AuditLogsPage from './pages/system/AuditLogsPage';
 
 function App() {
     return (
         <BrowserRouter>
             <Routes>
-                <Route path="/admin" element={<AdminLayout />}>
-                    <Route index element={<Dashboard />} />
+                <Route path="/login" element={<Login />} />
 
-                    {/* User Management */}
-                    <Route path="users" element={<PlaceholderPage title="All Users" />} />
-                    <Route path="users/verify" element={<PlaceholderPage title="User Verification" />} />
+                <Route element={<RequireAdmin />}>
+                    <Route path="/admin" element={<AdminLayout />}>
+                        <Route index element={<Dashboard />} />
 
-                    {/* Marketplace */}
-                    <Route path="listings" element={<PlaceholderPage title="Listings Management" />} />
-                    <Route path="categories" element={<PlaceholderPage title="Category Management" />} />
+                        {/* User Management */}
+                        <Route path="users" element={<UsersPage />} />
+                        <Route path="users/verify" element={<UserVerificationPage />} />
 
-                    {/* Finance */}
-                    <Route path="transactions" element={<PlaceholderPage title="Transactions" />} />
-                    <Route path="payouts" element={<PlaceholderPage title="Payouts" />} />
+                        {/* Marketplace */}
+                        <Route path="listings" element={<ListingsPage />} />
+                        <Route path="categories" element={<CategoriesPage />} />
 
-                    {/* System */}
-                    <Route path="settings" element={<PlaceholderPage title="Platform Settings" />} />
-                    <Route path="health" element={<PlaceholderPage title="System Health" />} />
+                        {/* Finance */}
+                        <Route path="transactions" element={<TransactionsPage />} />
+                        <Route path="payouts" element={<PayoutsPage />} />
+
+                        {/* System */}
+                        <Route path="settings" element={<SettingsPage />} />
+                        <Route path="health" element={<HealthPage />} />
+                        <Route path="audit-logs" element={<AuditLogsPage />} />
+                    </Route>
                 </Route>
 
                 {/* Redirect root to admin for now, or login */}

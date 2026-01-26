@@ -3,9 +3,11 @@
 namespace App\Services;
 
 use App\Models\Sensor;
+use App\Models\SensorReading;
 use App\Models\HealthRecord;
 use App\Models\Alert;
 use App\Events\SensorDataReceived;
+use App\Events\AlertCreated;
 
 class SensorService
 {
@@ -16,6 +18,9 @@ class SensorService
     {
         // Update sensor communication timestamp
         $sensor->updateCommunication();
+
+        // Store raw reading history (even if not all fields exist)
+        $this->storeSensorReading($sensor, $data);
 
         // Update battery level if provided
         if (isset($data['battery_level'])) {
@@ -34,6 +39,21 @@ class SensorService
 
         // Fire event for real-time processing
         event(new SensorDataReceived($sensor, $data));
+    }
+
+    protected function storeSensorReading(Sensor $sensor, array $data): void
+    {
+        SensorReading::create([
+            'sensor_id' => $sensor->id,
+            'farm_id' => $sensor->farm_id,
+            'animal_id' => $sensor->animal_id,
+            'recorded_at' => now(),
+            'temperature' => $data['temperature'] ?? null,
+            'heart_rate' => $data['heart_rate'] ?? null,
+            'activity_level' => $data['activity_level'] ?? null,
+            'battery_level' => $data['battery_level'] ?? null,
+            'metadata' => $data['metadata'] ?? null,
+        ]);
     }
 
     /**
@@ -89,7 +109,7 @@ class SensorService
      */
     protected function createHealthAlert(Sensor $sensor, string $message): void
     {
-        Alert::create([
+        $alert = Alert::create([
             'farm_id' => $sensor->farm_id,
             'animal_id' => $sensor->animal_id,
             'sensor_id' => $sensor->id,
@@ -98,5 +118,7 @@ class SensorService
             'title' => 'Health Alert',
             'message' => $message,
         ]);
+
+        event(new AlertCreated($alert));
     }
 }
