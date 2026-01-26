@@ -24,7 +24,6 @@ return new class extends Migration
             $table->boolean('is_approved')->default(true);
             $table->timestamps();
             
-            $table->index(['reviewable_type', 'reviewable_id']);
             $table->index(['reviewer_id', 'created_at']);
             $table->index('rating');
         });

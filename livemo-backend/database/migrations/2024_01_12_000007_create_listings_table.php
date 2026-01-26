@@ -34,7 +34,6 @@ return new class extends Migration
             $table->timestamps();
             $table->softDeletes();
             
-            $table->index(['listable_type', 'listable_id']);
             $table->index(['seller_id', 'status']);
             $table->index(['status', 'published_at']);
             $table->index('featured');

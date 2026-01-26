@@ -7,6 +7,18 @@ use App\Http\Controllers\Api\FarmController;
 use App\Http\Controllers\Api\HealthController;
 use App\Http\Controllers\Api\SensorController;
 use App\Http\Controllers\Api\AdminController;
+use App\Http\Controllers\Api\AdminCategoryController;
+use App\Http\Controllers\Api\AdminHealthController;
+use App\Http\Controllers\Api\AdminPayoutController;
+use App\Http\Controllers\Api\AdminAuditLogController;
+use App\Http\Controllers\Api\AdminListingReportController;
+use App\Http\Controllers\Api\AdminDisputeController;
+use App\Http\Controllers\Api\AdminUserController;
+use App\Http\Controllers\Api\AdminListingController;
+use App\Http\Controllers\Api\AdminAnnouncementController;
+use App\Http\Controllers\Api\AdminContentPageController;
+use App\Http\Controllers\Api\AdminFooterContentController;
+use App\Http\Controllers\Api\AdminFinanceController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -63,6 +75,68 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
         Route::get('/transactions', [AdminController::class, 'transactions']);
         Route::get('/settings', [AdminController::class, 'settings']);
         Route::put('/settings', [AdminController::class, 'updateSettings']);
+
+        // Categories
+        Route::get('/categories', [AdminCategoryController::class, 'index']);
+        Route::post('/categories', [AdminCategoryController::class, 'store']);
+        Route::put('/categories/{id}', [AdminCategoryController::class, 'update']);
+        Route::delete('/categories/{id}', [AdminCategoryController::class, 'destroy']);
+
+        // Payouts
+        Route::get('/payouts', [AdminPayoutController::class, 'index']);
+        Route::post('/payouts', [AdminPayoutController::class, 'store']);
+        Route::put('/payouts/{id}/status', [AdminPayoutController::class, 'updateStatus']);
+
+        // System Health
+        Route::get('/health', [AdminHealthController::class, 'show']);
+
+        // Audit Logs
+        Route::get('/audit-logs', [AdminAuditLogController::class, 'index']);
+
+        // Listing Reports
+        Route::get('/reports/listings', [AdminListingReportController::class, 'index']);
+        Route::post('/reports/listings', [AdminListingReportController::class, 'store']);
+        Route::put('/reports/listings/{id}', [AdminListingReportController::class, 'update']);
+
+        // Disputes
+        Route::get('/disputes', [AdminDisputeController::class, 'index']);
+        Route::put('/disputes/{id}', [AdminDisputeController::class, 'update']);
+
+        // User Admin Actions
+        Route::delete('/users/{id}', [AdminUserController::class, 'destroy']);
+        Route::get('/users/{id}/activity', [AdminUserController::class, 'activity']);
+
+        // Listing Admin Actions
+        Route::delete('/listings/{id}', [AdminListingController::class, 'destroy']);
+        Route::put('/listings/{id}/feature', [AdminListingController::class, 'feature']);
+
+        // CMS-lite
+        Route::get('/announcements', [AdminAnnouncementController::class, 'index']);
+        Route::post('/announcements', [AdminAnnouncementController::class, 'store']);
+        Route::put('/announcements/{id}', [AdminAnnouncementController::class, 'update']);
+        Route::delete('/announcements/{id}', [AdminAnnouncementController::class, 'destroy']);
+
+        Route::get('/content-pages', [AdminContentPageController::class, 'index']);
+        Route::get('/content-pages/{slug}', [AdminContentPageController::class, 'show']);
+        Route::post('/content-pages', [AdminContentPageController::class, 'store']);
+        Route::put('/content-pages/{id}', [AdminContentPageController::class, 'update']);
+        Route::delete('/content-pages/{id}', [AdminContentPageController::class, 'destroy']);
+
+        Route::get('/footer-contents', [AdminFooterContentController::class, 'index']);
+        Route::post('/footer-contents', [AdminFooterContentController::class, 'store']);
+        Route::put('/footer-contents/{id}', [AdminFooterContentController::class, 'update']);
+        Route::delete('/footer-contents/{id}', [AdminFooterContentController::class, 'destroy']);
+
+        // Finance / Escrow / Refunds / Reporting
+        Route::get('/finance/summary', [AdminFinanceController::class, 'summary']);
+        Route::get('/finance/revenue-trend', [AdminFinanceController::class, 'revenueTrend']);
+
+        Route::get('/finance/refunds', [AdminFinanceController::class, 'refundRequests']);
+        Route::post('/finance/refunds', [AdminFinanceController::class, 'createRefundRequest']);
+        Route::put('/finance/refunds/{id}/status', [AdminFinanceController::class, 'updateRefundStatus']);
+
+        Route::get('/finance/escrow', [AdminFinanceController::class, 'escrow']);
+        Route::post('/finance/escrow/release', [AdminFinanceController::class, 'releaseEscrow']);
     });
 });
 
