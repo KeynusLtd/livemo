@@ -11,6 +11,15 @@ use App\Models\Marketplace\Listing;
 use App\Models\Marketplace\Order;
 use App\Models\Marketplace\OrderItem;
 use App\Models\Marketplace\Product;
+use App\Models\Announcement;
+use App\Models\ContentPage;
+use App\Models\Dispute;
+use App\Models\EscrowTransaction;
+use App\Models\FooterContent;
+use App\Models\ListingReport;
+use App\Models\Payout;
+use App\Models\PlatformSetting;
+use App\Models\RefundRequest;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -253,6 +262,103 @@ class DemoDataSeeder extends Seeder
                     'price' => (string) $listing1->price,
                     'currency' => $listing1->currency,
                 ],
+            ]
+        );
+
+        PlatformSetting::updateOrCreate(
+            ['key' => 'commission_rate'],
+            ['value' => 0.05, 'type' => 'number', 'updated_by' => $admin->id]
+        );
+        PlatformSetting::updateOrCreate(
+            ['key' => 'site_name'],
+            ['value' => 'Livemo', 'type' => 'string', 'updated_by' => $admin->id]
+        );
+        PlatformSetting::updateOrCreate(
+            ['key' => 'maintenance_mode'],
+            ['value' => false, 'type' => 'boolean', 'updated_by' => $admin->id]
+        );
+
+        Payout::firstOrCreate(
+            ['seller_id' => $user->id, 'requested_by_admin_id' => $admin->id, 'amount' => 50.00, 'currency' => 'USD'],
+            ['status' => 'requested', 'notes' => 'Demo payout request']
+        );
+
+        Announcement::firstOrCreate(
+            ['title' => 'Welcome to Livemo Admin'],
+            [
+                'body' => 'This is a demo announcement to validate admin CMS features.',
+                'level' => 'info',
+                'is_active' => true,
+                'starts_at' => now()->subDay(),
+                'ends_at' => now()->addDays(30),
+                'created_by' => $admin->id,
+            ]
+        );
+
+        ContentPage::firstOrCreate(
+            ['slug' => 'how-it-works'],
+            [
+                'title' => 'How it Works',
+                'body' => 'Demo content page. Replace with real content.',
+                'is_published' => true,
+                'published_at' => now()->subDays(3),
+                'updated_by' => $admin->id,
+            ]
+        );
+
+        FooterContent::firstOrCreate(
+            ['key' => 'company'],
+            [
+                'title' => 'Company',
+                'content' => [
+                    ['label' => 'About', 'href' => '/about'],
+                    ['label' => 'Help', 'href' => '/help'],
+                ],
+                'order' => 1,
+                'is_active' => true,
+                'updated_by' => $admin->id,
+            ]
+        );
+
+        ListingReport::firstOrCreate(
+            ['listing_id' => $listing2->id, 'reporter_id' => $buyer->id, 'reason' => 'Suspicious listing'],
+            [
+                'details' => 'Demo report for admin moderation queue.',
+                'status' => 'open',
+                'assigned_admin_id' => $admin->id,
+            ]
+        );
+
+        Dispute::firstOrCreate(
+            ['order_id' => $order->id, 'opened_by_user_id' => $buyer->id],
+            [
+                'against_user_id' => $user->id,
+                'subject' => 'Order issue',
+                'description' => 'Demo dispute for admin review.',
+                'status' => 'open',
+                'assigned_admin_id' => $admin->id,
+            ]
+        );
+
+        RefundRequest::firstOrCreate(
+            ['order_id' => $order->id, 'requested_by_user_id' => $buyer->id],
+            [
+                'amount' => 10.00,
+                'currency' => 'USD',
+                'reason' => 'Item not as described',
+                'details' => 'Demo refund request.',
+                'status' => 'requested',
+            ]
+        );
+
+        EscrowTransaction::firstOrCreate(
+            ['order_id' => $order->id, 'seller_id' => $user->id, 'type' => 'hold'],
+            [
+                'amount' => 37.00,
+                'currency' => 'USD',
+                'status' => 'completed',
+                'notes' => 'Demo escrow hold on paid order',
+                'processed_by_admin_id' => $admin->id,
             ]
         );
 
