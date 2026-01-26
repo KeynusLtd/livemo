@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\AdminAuditLog;
+use App\Models\PlatformSetting;
 use App\Models\User;
 use App\Models\Marketplace\Listing;
 use App\Models\Marketplace\Order;
@@ -35,8 +37,15 @@ class AdminController extends Controller
     {
         $query = User::query();
 
-        if ($request->has('role')) {
+        if ($request->filled('role')) {
             $query->where('role', $request->role);
+        }
+
+        if ($request->filled('verification')) {
+            $request->validate([
+                'verification' => 'in:pending,verified',
+            ]);
+            $query->where('is_verified', $request->verification === 'verified');
         }
 
         if ($request->has('search')) {
@@ -81,6 +90,17 @@ class AdminController extends Controller
         
         $user->save();
 
+        AdminAuditLog::create([
+            'admin_id' => $request->user()->id,
+            'action' => 'user.status_updated',
+            'entity_type' => 'user',
+            'entity_id' => $user->id,
+            'metadata' => ['payload' => $validated],
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+            'created_at' => now(),
+        ]);
+
         return response()->json(['message' => 'User updated successfully', 'user' => $user]);
     }
 
@@ -117,6 +137,17 @@ class AdminController extends Controller
         $listing->status = $request->status;
         $listing->save();
 
+        AdminAuditLog::create([
+            'admin_id' => $request->user()->id,
+            'action' => 'listing.status_updated',
+            'entity_type' => 'listing',
+            'entity_id' => $listing->id,
+            'metadata' => ['payload' => $validated],
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+            'created_at' => now(),
+        ]);
+
         return response()->json(['message' => 'Listing updated successfully', 'listing' => $listing]);
     }
 
@@ -137,12 +168,18 @@ class AdminController extends Controller
      */
     public function settings()
     {
-        // This could come from a Settings model or config
-        $settings = [
+        $defaults = [
             'commission_rate' => 0.05,
             'site_name' => 'Livemo',
             'maintenance_mode' => false,
         ];
+
+        $rows = PlatformSetting::whereIn('key', array_keys($defaults))->get();
+
+        $settings = $defaults;
+        foreach ($rows as $row) {
+            $settings[$row->key] = $row->value;
+        }
 
         return response()->json($settings);
     }
@@ -152,7 +189,34 @@ class AdminController extends Controller
      */
     public function updateSettings(Request $request)
     {
-        // Logic to save settings
+        $validated = $request->validate([
+            'commission_rate' => 'nullable|numeric|min:0|max:1',
+            'site_name' => 'nullable|string|max:255',
+            'maintenance_mode' => 'nullable|boolean',
+        ]);
+
+        foreach ($validated as $key => $value) {
+            PlatformSetting::updateOrCreate(
+                ['key' => $key],
+                [
+                    'value' => $value,
+                    'type' => is_bool($value) ? 'boolean' : (is_numeric($value) ? 'number' : 'string'),
+                    'updated_by' => $request->user()->id,
+                ]
+            );
+        }
+
+        AdminAuditLog::create([
+            'admin_id' => $request->user()->id,
+            'action' => 'settings.updated',
+            'entity_type' => 'settings',
+            'entity_id' => null,
+            'metadata' => ['payload' => $validated],
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+            'created_at' => now(),
+        ]);
+
         return response()->json(['message' => 'Settings updated successfully']);
     }
 }

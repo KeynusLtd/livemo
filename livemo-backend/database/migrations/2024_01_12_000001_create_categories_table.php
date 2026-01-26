@@ -22,6 +22,7 @@ return new class extends Migration
             $table->integer('order')->default(0);
             $table->boolean('is_active')->default(true);
             $table->timestamps();
+            $table->softDeletes();
             
             $table->index(['type', 'is_active']);
             $table->index('slug');
