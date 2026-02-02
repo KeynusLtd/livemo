@@ -28,7 +28,7 @@ export default function Pasture() {
     staleTime: 10_000,
   });
 
-  const pastures: PastureType[] = pasturesQuery.data?.data ?? [];
+  const pastures: PastureType[] = useMemo(() => pasturesQuery.data?.data ?? [], [pasturesQuery.data?.data]);
 
   const activeCount = useMemo(
     () => pastures.filter((p) => p.is_active).length,

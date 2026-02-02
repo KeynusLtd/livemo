@@ -40,7 +40,7 @@ export default function Health() {
     staleTime: 10_000,
   });
 
-  const animals: Animal[] = animalsQuery.data?.data ?? [];
+  const animals: Animal[] = useMemo(() => animalsQuery.data?.data ?? [], [animalsQuery.data?.data]);
   const [selectedAnimalId, setSelectedAnimalId] = useState<number | null>(null);
 
   useEffect(() => {
@@ -56,7 +56,10 @@ export default function Health() {
     staleTime: 10_000,
   });
 
-  const healthRecords = animalHealthQuery.data?.health_records.data ?? [];
+  const healthRecords = useMemo(
+    () => animalHealthQuery.data?.health_records.data ?? [],
+    [animalHealthQuery.data?.health_records.data]
+  );
 
   const vitalTrends = useMemo(() => {
     const rows = [...healthRecords]

@@ -88,7 +88,7 @@ export default function Alerts() {
     },
   });
 
-  const remoteAlerts = alertsQuery.data?.data ?? [];
+  const remoteAlerts = useMemo(() => alertsQuery.data?.data ?? [], [alertsQuery.data?.data]);
   const filteredAlerts = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (q.length === 0) return remoteAlerts;

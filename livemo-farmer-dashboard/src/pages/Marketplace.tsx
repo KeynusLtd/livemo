@@ -66,7 +66,7 @@ export default function Marketplace() {
     staleTime: 30_000,
   });
 
-  const listings: Listing[] = listingsQuery.data?.data ?? [];
+  const listings: Listing[] = useMemo(() => listingsQuery.data?.data ?? [], [listingsQuery.data?.data]);
   const orders: Order[] = ordersQuery.data?.data ?? [];
   const earnings = earningsQuery.data;
 

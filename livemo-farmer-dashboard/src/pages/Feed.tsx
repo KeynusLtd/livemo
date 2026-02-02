@@ -46,7 +46,7 @@ export default function Feed() {
     staleTime: 10_000,
   });
 
-  const schedules: FeedSchedule[] = feedQuery.data?.data ?? [];
+  const schedules: FeedSchedule[] = useMemo(() => feedQuery.data?.data ?? [], [feedQuery.data?.data]);
   const completedCount = schedules.filter((s) => s.is_completed).length;
   const upcomingCount = schedules.filter((s) => !s.is_completed).length;
   const totalCount = schedules.length;

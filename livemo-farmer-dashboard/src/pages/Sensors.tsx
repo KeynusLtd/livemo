@@ -38,7 +38,7 @@ export default function Sensors() {
     staleTime: 10_000,
   });
 
-  const sensors: Sensor[] = sensorsQuery.data?.data ?? [];
+  const sensors: Sensor[] = useMemo(() => sensorsQuery.data?.data ?? [], [sensorsQuery.data?.data]);
 
   const onlineCount = useMemo(() => sensors.filter((s) => isOnline(s)).length, [sensors]);
   const avgBattery = useMemo(() => {
