@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Sensor;
+use App\Models\Farm;
 use App\Services\SensorService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -14,9 +15,15 @@ class SensorController extends Controller
         protected SensorService $sensorService
     ) {}
 
+    protected function userFarmIds(Request $request)
+    {
+        return Farm::where('user_id', $request->user()->id)->pluck('id');
+    }
+
     public function index(Request $request): JsonResponse
     {
-        $query = Sensor::with(['farm', 'animal']);
+        $farmIds = $this->userFarmIds($request);
+        $query = Sensor::with(['farm', 'animal'])->whereIn('farm_id', $farmIds);
 
         if ($request->has('farm_id')) {
             $query->where('farm_id', $request->farm_id);
@@ -41,6 +48,11 @@ class SensorController extends Controller
             'configuration' => 'nullable|array',
         ]);
 
+        $farm = Farm::findOrFail($validated['farm_id']);
+        if ($farm->user_id !== $request->user()->id) {
+            abort(403);
+        }
+
         $sensor = Sensor::create($validated);
 
         return response()->json([
@@ -49,13 +61,22 @@ class SensorController extends Controller
         ], 201);
     }
 
-    public function show(Sensor $sensor): JsonResponse
+    public function show(Request $request, Sensor $sensor): JsonResponse
     {
+        $sensor->loadMissing('farm');
+        if ($sensor->farm && $sensor->farm->user_id !== $request->user()->id) {
+            abort(403);
+        }
+
         return response()->json($sensor->load(['farm', 'animal']));
     }
 
     public function update(Request $request, Sensor $sensor): JsonResponse
     {
+        if ($sensor->farm && $sensor->farm->user_id !== $request->user()->id) {
+            abort(403);
+        }
+
         $validated = $request->validate([
             'animal_id' => 'nullable|exists:animals,id',
             'status' => 'sometimes|in:active,inactive,maintenance,lost',
@@ -73,6 +94,10 @@ class SensorController extends Controller
 
     public function data(Request $request, Sensor $sensor): JsonResponse
     {
+        if ($sensor->farm && $sensor->farm->user_id !== $request->user()->id) {
+            abort(403);
+        }
+
         $validated = $request->validate([
             'temperature' => 'nullable|numeric',
             'heart_rate' => 'nullable|integer',

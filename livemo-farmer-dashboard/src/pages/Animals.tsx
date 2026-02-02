@@ -1,5 +1,5 @@
 import { Layout } from "@/components/Layout";
-import { AnimalCard } from "@/components/AnimalCard";
+import { AnimalRowCard } from "@/components/AnimalRowCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -10,77 +10,36 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Plus, Search } from "lucide-react";
-
-const allAnimals = [
-  {
-    id: "247",
-    name: "Bessie",
-    type: "Dairy Cow",
-    emoji: "🐄",
-    health: 95,
-    temperature: 38.5,
-    heartRate: 65,
-    location: "Pasture A",
-    status: "healthy" as const,
-  },
-  {
-    id: "142",
-    name: "Clucky",
-    type: "Layer Hen",
-    emoji: "🐔",
-    health: 72,
-    temperature: 40.5,
-    heartRate: 280,
-    location: "Coop 3",
-    status: "warning" as const,
-  },
-  {
-    id: "089",
-    name: "Billy",
-    type: "Meat Goat",
-    emoji: "🐐",
-    health: 88,
-    temperature: 39.2,
-    heartRate: 85,
-    location: "Pasture B",
-    status: "healthy" as const,
-  },
-  {
-    id: "156",
-    name: "Porky",
-    type: "Commercial Pig",
-    emoji: "🐷",
-    health: 91,
-    temperature: 39.0,
-    heartRate: 75,
-    location: "Pen 5",
-    status: "healthy" as const,
-  },
-  {
-    id: "203",
-    name: "Thunder",
-    type: "Work Horse",
-    emoji: "🐴",
-    health: 87,
-    temperature: 38.0,
-    heartRate: 40,
-    location: "Stable A",
-    status: "healthy" as const,
-  },
-  {
-    id: "178",
-    name: "Cotton",
-    type: "Wool Sheep",
-    emoji: "🐑",
-    health: 93,
-    temperature: 39.5,
-    heartRate: 90,
-    location: "Pasture C",
-    status: "healthy" as const,
-  },
-];
+import { useQuery } from "@tanstack/react-query";
+import { listAnimals } from "@/lib/animalApi";
+import type { Animal } from "@/lib/animalApi";
+import { useMemo, useState } from "react";
 
 export default function Animals() {
+  const [search, setSearch] = useState("");
+  const [type, setType] = useState("all");
+  const [status, setStatus] = useState("all");
+  const [page, setPage] = useState(1);
+
+  const queryParams = useMemo(
+    () => ({
+      search: search.trim().length > 0 ? search.trim() : undefined,
+      type: type !== "all" ? type : undefined,
+      status: status !== "all" ? status : undefined,
+    }),
+    [search, status, type]
+  );
+
+  const { data, isLoading, isError, error, isFetching } = useQuery({
+    queryKey: ["animals", queryParams, page],
+    queryFn: () => listAnimals({ ...queryParams, page }),
+    staleTime: 10_000,
+  });
+
+  const animals: Animal[] = data?.data ?? [];
+  const currentPage = data?.current_page ?? 1;
+  const lastPage = data?.last_page ?? 1;
+
   return (
     <Layout>
       <div className="space-y-6">
@@ -105,9 +64,20 @@ export default function Animals() {
             <Input
               placeholder="Search by name or ID..."
               className="pl-10"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
             />
           </div>
-          <Select defaultValue="all">
+          <Select
+            value={type}
+            onValueChange={(v) => {
+              setType(v);
+              setPage(1);
+            }}
+          >
             <SelectTrigger className="w-full md:w-48">
               <SelectValue placeholder="Type" />
             </SelectTrigger>
@@ -117,29 +87,73 @@ export default function Animals() {
               <SelectItem value="poultry">🐔 Poultry</SelectItem>
               <SelectItem value="goats">🐐 Goats</SelectItem>
               <SelectItem value="sheep">🐑 Sheep</SelectItem>
-              <SelectItem value="pigs">🐷 Pigs</SelectItem>
+              <SelectItem value="swine">🐷 Swine</SelectItem>
               <SelectItem value="horses">🐴 Horses</SelectItem>
+              <SelectItem value="rabbits">🐰 Rabbits</SelectItem>
             </SelectContent>
           </Select>
-          <Select defaultValue="all">
+          <Select
+            value={status}
+            onValueChange={(v) => {
+              setStatus(v);
+              setPage(1);
+            }}
+          >
             <SelectTrigger className="w-full md:w-48">
               <SelectValue placeholder="Status" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Status</SelectItem>
               <SelectItem value="healthy">Healthy</SelectItem>
-              <SelectItem value="warning">Needs Attention</SelectItem>
-              <SelectItem value="critical">Critical</SelectItem>
+              <SelectItem value="sick">Sick</SelectItem>
+              <SelectItem value="quarantine">Quarantine</SelectItem>
+              <SelectItem value="sold">Sold</SelectItem>
+              <SelectItem value="deceased">Deceased</SelectItem>
             </SelectContent>
           </Select>
         </div>
 
         {/* Animals Grid */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {allAnimals.map((animal) => (
-            <AnimalCard key={animal.id} {...animal} />
-          ))}
-        </div>
+        {isLoading ? (
+          <div className="text-sm text-muted-foreground">Loading animals...</div>
+        ) : isError ? (
+          <div className="text-sm text-destructive">
+            {error instanceof Error ? error.message : "Failed to load animals"}
+          </div>
+        ) : (
+          <>
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {animals.map((animal) => (
+                <AnimalRowCard key={animal.id} animal={animal} />
+              ))}
+            </div>
+
+            <div className="flex items-center justify-between pt-2">
+              <div className="text-sm text-muted-foreground">
+                Page {currentPage} of {lastPage}
+                {isFetching ? " • Updating..." : ""}
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={currentPage <= 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={currentPage >= lastPage}
+                  onClick={() => setPage((p) => p + 1)}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </Layout>
   );

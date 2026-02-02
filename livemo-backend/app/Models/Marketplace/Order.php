@@ -15,6 +15,7 @@ class Order extends Model
         'order_number',
         'buyer_id',
         'seller_id',
+        'farm_id',
         'subtotal',
         'delivery_fee',
         'tax',
@@ -75,6 +76,14 @@ class Order extends Model
     public function seller()
     {
         return $this->belongsTo(User::class, 'seller_id');
+    }
+
+    /**
+     * Get the farm (if set).
+     */
+    public function farm()
+    {
+        return $this->belongsTo(Farm::class);
     }
 
     /**

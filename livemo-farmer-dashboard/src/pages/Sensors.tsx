@@ -5,77 +5,49 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Radio, Battery, Signal, MapPin, Plus } from "lucide-react";
 
-const sensors = [
-  {
-    id: "SEN-001",
-    animalId: "247",
-    animalName: "Bessie",
-    type: "Health Monitor",
-    battery: 85,
-    signal: 95,
-    status: "active",
-    lastUpdate: "2 mins ago",
-  },
-  {
-    id: "SEN-002",
-    animalId: "142",
-    animalName: "Clucky",
-    type: "Health Monitor",
-    battery: 45,
-    signal: 88,
-    status: "active",
-    lastUpdate: "5 mins ago",
-  },
-  {
-    id: "SEN-003",
-    animalId: "089",
-    animalName: "Billy",
-    type: "GPS Tracker",
-    battery: 92,
-    signal: 100,
-    status: "active",
-    lastUpdate: "1 min ago",
-  },
-  {
-    id: "SEN-004",
-    animalId: "156",
-    animalName: "Porky",
-    type: "Health Monitor",
-    battery: 78,
-    signal: 92,
-    status: "active",
-    lastUpdate: "3 mins ago",
-  },
-  {
-    id: "SEN-005",
-    animalId: "203",
-    animalName: "Thunder",
-    type: "Activity Sensor",
-    battery: 15,
-    signal: 75,
-    status: "warning",
-    lastUpdate: "10 mins ago",
-  },
-  {
-    id: "SEN-006",
-    animalId: "178",
-    animalName: "Cotton",
-    type: "Health Monitor",
-    battery: 88,
-    signal: 90,
-    status: "active",
-    lastUpdate: "1 min ago",
-  },
-];
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useActiveFarm } from "@/hooks/useActiveFarm";
+import { listSensors } from "@/lib/sensorApi";
+import type { Sensor } from "@/lib/sensorApi";
+
+function minutesAgoLabel(iso?: string | null) {
+  if (!iso) return "Never";
+  const t = new Date(iso).getTime();
+  const mins = Math.max(0, Math.round((Date.now() - t) / 60000));
+  if (mins <= 1) return "Just now";
+  if (mins < 60) return `${mins} mins ago`;
+  const hrs = Math.round(mins / 60);
+  return `${hrs} hrs ago`;
+}
+
+function isOnline(sensor: Sensor) {
+  if (sensor.status !== "active") return false;
+  if (!sensor.last_communication) return false;
+  const mins = (Date.now() - new Date(sensor.last_communication).getTime()) / 60000;
+  return mins <= 30;
+}
 
 export default function Sensors() {
-  const activeSensors = sensors.filter((s) => s.status === "active").length;
-  const avgBattery = Math.round(
-    sensors.reduce((acc, s) => acc + s.battery, 0) / sensors.length
-  );
-  const avgSignal = Math.round(
-    sensors.reduce((acc, s) => acc + s.signal, 0) / sensors.length
-  );
+  const { activeFarmId } = useActiveFarm();
+
+  const sensorsQuery = useQuery({
+    queryKey: ["sensors", activeFarmId],
+    queryFn: () => listSensors({ farm_id: activeFarmId ?? undefined, page: 1 }),
+    enabled: activeFarmId != null,
+    staleTime: 10_000,
+  });
+
+  const sensors: Sensor[] = useMemo(() => sensorsQuery.data?.data ?? [], [sensorsQuery.data?.data]);
+
+  const onlineCount = useMemo(() => sensors.filter((s) => isOnline(s)).length, [sensors]);
+  const avgBattery = useMemo(() => {
+    const vals = sensors.map((s) => s.battery_level).filter((v): v is number => typeof v === "number");
+    if (vals.length === 0) return 0;
+    return Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
+  }, [sensors]);
+
+  const onlinePercent = sensors.length > 0 ? Math.round((onlineCount / sensors.length) * 100) : 0;
 
   return (
     <Layout>
@@ -104,10 +76,10 @@ export default function Sensors() {
                     Active Sensors
                   </p>
                   <h3 className="mt-2 text-3xl font-bold text-foreground">
-                    {activeSensors}/{sensors.length}
+                    {onlineCount}/{sensors.length}
                   </h3>
                   <Badge className="mt-2 bg-success text-success-foreground">
-                    All Online
+                    {onlinePercent >= 90 ? "All Online" : "Partial"}
                   </Badge>
                 </div>
                 <div className="rounded-lg bg-gradient-earth p-3 text-white">
@@ -146,10 +118,10 @@ export default function Sensors() {
                     Average Signal
                   </p>
                   <h3 className="mt-2 text-3xl font-bold text-foreground">
-                    {avgSignal}%
+                    {onlinePercent}%
                   </h3>
                   <Badge className="mt-2 bg-success text-success-foreground">
-                    Excellent
+                    {onlinePercent >= 90 ? "Excellent" : onlinePercent >= 60 ? "Good" : "Low"}
                   </Badge>
                 </div>
                 <div className="rounded-lg bg-sky p-3 text-white">
@@ -166,72 +138,93 @@ export default function Sensors() {
             <CardTitle>All Sensors</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              {sensors.map((sensor) => (
-                <div
-                  key={sensor.id}
-                  className="flex flex-col gap-4 rounded-lg border border-border p-4 md:flex-row md:items-center"
-                >
-                  <div className="flex flex-1 items-center gap-4">
-                    <div className="rounded-lg bg-muted p-3">
-                      <Radio className="h-5 w-5 text-primary" />
-                    </div>
-                    <div className="flex-1">
-                      <h4 className="font-medium">{sensor.id}</h4>
-                      <p className="text-sm text-muted-foreground">
-                        {sensor.animalName} (#{sensor.animalId}) • {sensor.type}
-                      </p>
-                    </div>
-                  </div>
+            {activeFarmId == null ? (
+              <div className="text-sm text-muted-foreground">Select a farm to view sensors.</div>
+            ) : sensorsQuery.isLoading ? (
+              <div className="text-sm text-muted-foreground">Loading sensors...</div>
+            ) : sensorsQuery.isError ? (
+              <div className="text-sm text-destructive">
+                {sensorsQuery.error instanceof Error
+                  ? sensorsQuery.error.message
+                  : "Failed to load sensors"}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {sensors.map((sensor) => {
+                  const online = isOnline(sensor);
+                  const signalPct = online ? 100 : 0;
 
-                  <div className="grid grid-cols-2 gap-4 md:flex md:items-center md:gap-6">
-                    <div className="flex items-center gap-2">
-                      <Battery
-                        className={`h-4 w-4 ${
-                          sensor.battery > 50
-                            ? "text-success"
-                            : sensor.battery > 20
-                            ? "text-warning"
-                            : "text-destructive"
-                        }`}
-                      />
-                      <div>
-                        <p className="text-xs text-muted-foreground">Battery</p>
-                        <p className="text-sm font-medium">{sensor.battery}%</p>
+                  const animalLabel = sensor.animal
+                    ? `${sensor.animal.name && sensor.animal.name.trim().length > 0 ? sensor.animal.name : "Unnamed"} (${sensor.animal.tag_id})`
+                    : "Unassigned";
+
+                  return (
+                    <div
+                      key={sensor.id}
+                      className="flex flex-col gap-4 rounded-lg border border-border p-4 md:flex-row md:items-center"
+                    >
+                      <div className="flex flex-1 items-center gap-4">
+                        <div className="rounded-lg bg-muted p-3">
+                          <Radio className="h-5 w-5 text-primary" />
+                        </div>
+                        <div className="flex-1">
+                          <h4 className="font-medium">{sensor.device_id}</h4>
+                          <p className="text-sm text-muted-foreground">
+                            {animalLabel} • {sensor.type}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4 md:flex md:items-center md:gap-6">
+                        <div className="flex items-center gap-2">
+                          <Battery
+                            className={`h-4 w-4 ${
+                              (sensor.battery_level ?? 0) > 50
+                                ? "text-success"
+                                : (sensor.battery_level ?? 0) > 20
+                                ? "text-warning"
+                                : "text-destructive"
+                            }`}
+                          />
+                          <div>
+                            <p className="text-xs text-muted-foreground">Battery</p>
+                            <p className="text-sm font-medium">{sensor.battery_level ?? "—"}%</p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <Signal className={`h-4 w-4 ${online ? "text-success" : "text-warning"}`} />
+                          <div>
+                            <p className="text-xs text-muted-foreground">Signal</p>
+                            <p className="text-sm font-medium">{signalPct}%</p>
+                          </div>
+                        </div>
+
+                        <div className="col-span-2 md:col-span-1">
+                          <Badge
+                            className={
+                              online
+                                ? "bg-success text-success-foreground"
+                                : "bg-warning text-warning-foreground"
+                            }
+                          >
+                            {online ? "online" : "offline"}
+                          </Badge>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {minutesAgoLabel(sensor.last_communication)}
+                          </p>
+                        </div>
+
+                        <Button variant="outline" size="sm">
+                          <MapPin className="mr-2 h-4 w-4" />
+                          Track
+                        </Button>
                       </div>
                     </div>
-
-                    <div className="flex items-center gap-2">
-                      <Signal className="h-4 w-4 text-success" />
-                      <div>
-                        <p className="text-xs text-muted-foreground">Signal</p>
-                        <p className="text-sm font-medium">{sensor.signal}%</p>
-                      </div>
-                    </div>
-
-                    <div className="col-span-2 md:col-span-1">
-                      <Badge
-                        className={
-                          sensor.status === "active"
-                            ? "bg-success text-success-foreground"
-                            : "bg-warning text-warning-foreground"
-                        }
-                      >
-                        {sensor.status}
-                      </Badge>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {sensor.lastUpdate}
-                      </p>
-                    </div>
-
-                    <Button variant="outline" size="sm">
-                      <MapPin className="mr-2 h-4 w-4" />
-                      Track
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

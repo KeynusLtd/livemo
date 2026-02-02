@@ -5,14 +5,24 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\HealthRecord;
 use App\Models\Animal;
+use App\Models\Farm;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class HealthController extends Controller
 {
+    protected function userFarmIds(Request $request)
+    {
+        return Farm::where('user_id', $request->user()->id)->pluck('id');
+    }
+
     public function index(Request $request): JsonResponse
     {
-        $query = HealthRecord::with('animal');
+        $farmIds = $this->userFarmIds($request);
+        $query = HealthRecord::with('animal')
+            ->whereHas('animal', function ($q) use ($farmIds) {
+                $q->whereIn('farm_id', $farmIds);
+            });
 
         if ($request->has('animal_id')) {
             $query->where('animal_id', $request->animal_id);
@@ -44,6 +54,11 @@ class HealthController extends Controller
             'severity' => 'required|in:normal,mild,moderate,severe,critical',
         ]);
 
+        $animal = Animal::findOrFail($validated['animal_id']);
+        if ($animal->farm && $animal->farm->user_id !== $request->user()->id) {
+            abort(403);
+        }
+
         $record = HealthRecord::create($validated);
 
         return response()->json([
@@ -52,13 +67,23 @@ class HealthController extends Controller
         ], 201);
     }
 
-    public function show(HealthRecord $healthRecord): JsonResponse
+    public function show(Request $request, HealthRecord $healthRecord): JsonResponse
     {
+        $healthRecord->loadMissing('animal.farm');
+        if ($healthRecord->animal && $healthRecord->animal->farm && $healthRecord->animal->farm->user_id !== $request->user()->id) {
+            abort(403);
+        }
+
         return response()->json($healthRecord->load('animal'));
     }
 
     public function update(Request $request, HealthRecord $healthRecord): JsonResponse
     {
+        $healthRecord->loadMissing('animal.farm');
+        if ($healthRecord->animal && $healthRecord->animal->farm && $healthRecord->animal->farm->user_id !== $request->user()->id) {
+            abort(403);
+        }
+
         $validated = $request->validate([
             'diagnosis' => 'nullable|string',
             'treatment' => 'nullable|string',
@@ -76,10 +101,21 @@ class HealthController extends Controller
 
     public function analytics(Request $request): JsonResponse
     {
+        $farmIds = $this->userFarmIds($request);
+        $query = HealthRecord::query()->whereHas('animal', function ($q) use ($farmIds) {
+            $q->whereIn('farm_id', $farmIds);
+        });
+
+        if ($request->has('farm_id')) {
+            $query->whereHas('animal', function ($q) use ($request) {
+                $q->where('farm_id', $request->farm_id);
+            });
+        }
+
         $stats = [
-            'total_records' => HealthRecord::count(),
-            'critical_cases' => HealthRecord::where('severity', 'critical')->count(),
-            'recent_checkups' => HealthRecord::where('record_type', 'checkup')
+            'total_records' => (clone $query)->count(),
+            'critical_cases' => (clone $query)->where('severity', 'critical')->count(),
+            'recent_checkups' => (clone $query)->where('record_type', 'checkup')
                 ->where('created_at', '>=', now()->subDays(30))
                 ->count(),
         ];

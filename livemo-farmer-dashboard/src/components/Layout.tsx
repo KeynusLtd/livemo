@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { useQuery } from "@tanstack/react-query";
 import {
   LayoutDashboard,
   PawPrint,
@@ -17,6 +18,15 @@ import {
   X,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { useActiveFarm } from "@/hooks/useActiveFarm";
+import { getAlertStats } from "@/lib/alertApi";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const navigation = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
@@ -33,7 +43,16 @@ const navigation = [
 export function Layout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
-  const [alerts] = useState(3);
+  const { farms, activeFarmId, setActiveFarmId, farmsQuery } = useActiveFarm();
+
+  const alertStatsQuery = useQuery({
+    queryKey: ["alertStats", activeFarmId],
+    queryFn: () => getAlertStats({ farm_id: activeFarmId ?? undefined }),
+    enabled: activeFarmId != null,
+    staleTime: 10_000,
+  });
+
+  const alerts = alertStatsQuery.data?.pending ?? 0;
 
   return (
     <div className="min-h-screen bg-background">
@@ -57,6 +76,32 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </div>
 
           <div className="ml-auto flex items-center gap-3">
+            <div className="hidden md:block">
+              <Select
+                value={activeFarmId != null ? String(activeFarmId) : ""}
+                onValueChange={(v) => setActiveFarmId(v ? Number(v) : null)}
+                disabled={farmsQuery.isLoading || farms.length === 0}
+              >
+                <SelectTrigger className="w-[220px]">
+                  <SelectValue
+                    placeholder={
+                      farmsQuery.isLoading
+                        ? "Loading farms..."
+                        : farms.length === 0
+                        ? "No farms"
+                        : "Select farm"
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {farms.map((f) => (
+                    <SelectItem key={f.id} value={String(f.id)}>
+                      {f.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <Button variant="ghost" size="icon" className="relative">
               <Bell className="h-5 w-5" />
               {alerts > 0 && (

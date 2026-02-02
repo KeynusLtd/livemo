@@ -1,11 +1,22 @@
 <?php
 
 use App\Http\Controllers\Api\AlertController;
+use App\Http\Controllers\Api\AlertActionController;
 use App\Http\Controllers\Api\AnimalController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\BreedingRecordController;
+use App\Http\Controllers\Api\FeedScheduleController;
 use App\Http\Controllers\Api\FarmController;
+use App\Http\Controllers\Api\FarmInsightsController;
+use App\Http\Controllers\Api\FarmReportsController;
 use App\Http\Controllers\Api\HealthController;
+use App\Http\Controllers\Api\PastureController;
 use App\Http\Controllers\Api\SensorController;
+use App\Http\Controllers\Api\SensorReadingController;
+use App\Http\Controllers\Api\FarmListingController;
+use App\Http\Controllers\Api\FarmOrderController;
+use App\Http\Controllers\Api\FarmExportController;
+use App\Http\Controllers\Api\FarmProductController;
 use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\AdminCategoryController;
 use App\Http\Controllers\Api\AdminHealthController;
@@ -19,6 +30,8 @@ use App\Http\Controllers\Api\AdminAnnouncementController;
 use App\Http\Controllers\Api\AdminContentPageController;
 use App\Http\Controllers\Api\AdminFooterContentController;
 use App\Http\Controllers\Api\AdminFinanceController;
+use App\Http\Controllers\Api\Marketplace\SellerInsightsController;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -33,6 +46,22 @@ Route::prefix('v1')->group(function () {
     Route::post('/login', [AuthController::class, 'login']);
 });
 
+// Broadcasting auth (for private channels)
+Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
+    Route::post('/broadcasting/auth', function (Request $request) {
+        $channelName = $request->input('channel_name');
+        // For farm.{id} channels, ensure user owns the farm
+        if (str_starts_with($channelName, 'farm.')) {
+            $farmId = (int) str_replace('farm.', '', $channelName);
+            $farm = \App\Models\Farm::find($farmId);
+            if (!$farm || $farm->user_id !== $request->user()->id) {
+                abort(403);
+            }
+        }
+        return response()->json(['auth' => true]);
+    });
+});
+
 // Protected routes
 Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     // Authentication
@@ -44,6 +73,63 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::apiResource('farms', FarmController::class);
     Route::get('/farms/{farm}/animals', [FarmController::class, 'animals']);
     Route::get('/farms/{farm}/dashboard', [FarmController::class, 'dashboard']);
+
+    // Farm Operations (Feed / Pasture / Breeding)
+    Route::get('/farms/{farm}/feed-schedules', [FeedScheduleController::class, 'index']);
+    Route::post('/farms/{farm}/feed-schedules', [FeedScheduleController::class, 'store']);
+    Route::get('/farms/{farm}/feed-schedules/{feedSchedule}', [FeedScheduleController::class, 'show']);
+    Route::put('/farms/{farm}/feed-schedules/{feedSchedule}', [FeedScheduleController::class, 'update']);
+    Route::delete('/farms/{farm}/feed-schedules/{feedSchedule}', [FeedScheduleController::class, 'destroy']);
+    Route::post('/farms/{farm}/feed-schedules/{feedSchedule}/complete', [FeedScheduleController::class, 'complete']);
+
+    Route::get('/farms/{farm}/pastures', [PastureController::class, 'index']);
+    Route::post('/farms/{farm}/pastures', [PastureController::class, 'store']);
+    Route::get('/farms/{farm}/pastures/{pasture}', [PastureController::class, 'show']);
+    Route::put('/farms/{farm}/pastures/{pasture}', [PastureController::class, 'update']);
+    Route::delete('/farms/{farm}/pastures/{pasture}', [PastureController::class, 'destroy']);
+    Route::post('/farms/{farm}/pastures/{pasture}/assign-animal', [PastureController::class, 'assignAnimal']);
+    Route::post('/farms/{farm}/pastures/{pasture}/remove-animal', [PastureController::class, 'removeAnimal']);
+
+    Route::get('/farms/{farm}/breeding-records', [BreedingRecordController::class, 'index']);
+    Route::post('/farms/{farm}/breeding-records', [BreedingRecordController::class, 'store']);
+    Route::get('/farms/{farm}/breeding-records/{breedingRecord}', [BreedingRecordController::class, 'show']);
+    Route::put('/farms/{farm}/breeding-records/{breedingRecord}', [BreedingRecordController::class, 'update']);
+    Route::delete('/farms/{farm}/breeding-records/{breedingRecord}', [BreedingRecordController::class, 'destroy']);
+    Route::get('/farms/{farm}/breeding-reminders', [BreedingRecordController::class, 'reminders']);
+
+    // Farm Insights (Premium Intelligence - rule-based MVP)
+    Route::get('/farms/{farm}/insights/health-score', [FarmInsightsController::class, 'healthScore']);
+    Route::get('/farms/{farm}/insights/risk-signals', [FarmInsightsController::class, 'riskSignals']);
+    Route::get('/farms/{farm}/insights/alert-patterns', [FarmInsightsController::class, 'alertPatterns']);
+
+    // Farm Reports (export-ready JSON; CSV/PDF later)
+    Route::get('/farms/{farm}/reports/health', [FarmReportsController::class, 'health']);
+    Route::get('/farms/{farm}/reports/operations', [FarmReportsController::class, 'operations']);
+    Route::get('/farms/{farm}/reports/financial', [FarmReportsController::class, 'financial']);
+
+    // Farm Marketplace Listings (farmer-facing, farm-scoped)
+    Route::get('/farms/{farm}/listings', [FarmListingController::class, 'index']);
+    Route::post('/farms/{farm}/listings', [FarmListingController::class, 'store']);
+    Route::get('/farms/{farm}/listings/{listing}', [FarmListingController::class, 'show']);
+    Route::put('/farms/{farm}/listings/{listing}', [FarmListingController::class, 'update']);
+    Route::delete('/farms/{farm}/listings/{listing}', [FarmListingController::class, 'destroy']);
+
+    // Farm Orders & Earnings (seller cockpit, farm-scoped)
+    Route::get('/farms/{farm}/orders', [FarmOrderController::class, 'index']);
+    Route::get('/farms/{farm}/orders/{order}', [FarmOrderController::class, 'show']);
+    Route::get('/farms/{farm}/earnings', [FarmOrderController::class, 'earnings']);
+
+    // Farm Exports (CSV/JSON)
+    Route::get('/farms/{farm}/export/health', [FarmExportController::class, 'health']);
+    Route::get('/farms/{farm}/export/operations', [FarmExportController::class, 'operations']);
+    Route::get('/farms/{farm}/export/financial', [FarmExportController::class, 'financial']);
+
+    // Farm Product Inventory (farmer-side, not livestock)
+    Route::get('/farms/{farm}/products', [FarmProductController::class, 'index']);
+    Route::post('/farms/{farm}/products', [FarmProductController::class, 'store']);
+    Route::get('/farms/{farm}/products/{product}', [FarmProductController::class, 'show']);
+    Route::put('/farms/{farm}/products/{product}', [FarmProductController::class, 'update']);
+    Route::delete('/farms/{farm}/products/{product}', [FarmProductController::class, 'destroy']);
 
     // Animals
     Route::apiResource('animals', AnimalController::class);
@@ -57,13 +143,20 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     // Sensors
     Route::apiResource('sensors', SensorController::class);
     Route::post('/sensors/{sensor}/data', [SensorController::class, 'data']);
+    Route::get('/sensors/{sensor}/readings', [SensorReadingController::class, 'index']);
 
     // Alerts
     Route::get('/alerts', [AlertController::class, 'index']);
     Route::get('/alerts/{alert}', [AlertController::class, 'show']);
+    Route::get('/alerts/{alert}/actions', [AlertActionController::class, 'index']);
+    Route::post('/alerts/{alert}/actions', [AlertActionController::class, 'store']);
     Route::put('/alerts/{alert}/acknowledge', [AlertController::class, 'acknowledge']);
     Route::put('/alerts/{alert}/resolve', [AlertController::class, 'resolve']);
     Route::get('/alerts/stats', [AlertController::class, 'stats']);
+
+    // Marketplace Seller Insights (seller cockpit)
+    Route::get('/marketplace/seller/insights/summary', [SellerInsightsController::class, 'summary']);
+    Route::get('/marketplace/seller/insights/revenue-trend', [SellerInsightsController::class, 'revenueTrend']);
 
     // Admin Routes
     Route::prefix('admin')->middleware('admin')->group(function () {

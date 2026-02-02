@@ -10,35 +10,77 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Download, FileText } from "lucide-react";
-
-const reports = [
-  {
-    id: "REP-HEALTH-01",
-    name: "Health Summary",
-    period: "Last 30 days",
-    status: "ready" as const,
-  },
-  {
-    id: "REP-PROD-01",
-    name: "Production & Efficiency",
-    period: "Last 30 days",
-    status: "ready" as const,
-  },
-  {
-    id: "REP-FIN-01",
-    name: "Financial Overview",
-    period: "This month",
-    status: "ready" as const,
-  },
-  {
-    id: "REP-COMP-01",
-    name: "Compliance Export",
-    period: "Year to date",
-    status: "draft" as const,
-  },
-];
+import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useActiveFarm } from "@/hooks/useActiveFarm";
+import { getFinancialReport, getHealthReport, getOperationsReport } from "@/lib/reportsApi";
 
 export default function Reports() {
+  const { activeFarmId } = useActiveFarm();
+  const [period, setPeriod] = useState("30d");
+
+  const days = useMemo(() => {
+    if (period === "7d") return 7;
+    if (period === "ytd") return 365;
+    return 30;
+  }, [period]);
+
+  const healthReportQuery = useQuery({
+    queryKey: ["reportHealth", activeFarmId, days],
+    queryFn: () => getHealthReport({ farmId: activeFarmId as number }),
+    enabled: activeFarmId != null,
+    staleTime: 30_000,
+  });
+
+  const opsReportQuery = useQuery({
+    queryKey: ["reportOperations", activeFarmId, days],
+    queryFn: () => getOperationsReport({ farmId: activeFarmId as number, days }),
+    enabled: activeFarmId != null,
+    staleTime: 30_000,
+  });
+
+  const finReportQuery = useQuery({
+    queryKey: ["reportFinancial", activeFarmId],
+    queryFn: () => getFinancialReport({ farmId: activeFarmId as number }),
+    enabled: activeFarmId != null,
+    staleTime: 30_000,
+  });
+
+  const exportsCount = 0;
+  const healthScore = useMemo(() => {
+    const total = healthReportQuery.data?.summary.total_records ?? 0;
+    if (total === 0) return 0;
+    const critical = (healthReportQuery.data?.summary.by_severity?.critical ?? 0) as number;
+    const score = Math.max(0, Math.min(100, Math.round(100 - (critical / total) * 100)));
+    return score;
+  }, [healthReportQuery.data]);
+
+  const marketplaceRevenue = finReportQuery.data?.summary.marketplace_revenue_total ?? 0;
+
+  const reports = useMemo(
+    () => [
+      {
+        id: "REP-HEALTH",
+        name: "Health Summary",
+        period: `Last ${days} days`,
+        status: activeFarmId != null ? "ready" : "draft",
+      },
+      {
+        id: "REP-OPS",
+        name: "Operations Summary",
+        period: `Last ${days} days`,
+        status: activeFarmId != null ? "ready" : "draft",
+      },
+      {
+        id: "REP-FIN",
+        name: "Financial Overview",
+        period: "This month",
+        status: activeFarmId != null ? "ready" : "draft",
+      },
+    ],
+    [activeFarmId, days]
+  );
+
   return (
     <Layout>
       <div className="space-y-6">
@@ -55,8 +97,8 @@ export default function Reports() {
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <p className="text-sm font-medium text-muted-foreground">Exports</p>
-                  <h3 className="mt-2 text-3xl font-bold text-foreground">12</h3>
-                  <p className="mt-2 text-sm text-muted-foreground">Last 30 days</p>
+                  <h3 className="mt-2 text-3xl font-bold text-foreground">{exportsCount}</h3>
+                  <p className="mt-2 text-sm text-muted-foreground">Last {days} days</p>
                 </div>
                 <div className="rounded-lg bg-gradient-earth p-3 text-white">
                   <FileText className="h-6 w-6" />
@@ -70,8 +112,10 @@ export default function Reports() {
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <p className="text-sm font-medium text-muted-foreground">Health Score</p>
-                  <h3 className="mt-2 text-3xl font-bold text-foreground">91%</h3>
-                  <Badge className="mt-2 bg-success text-success-foreground">Stable</Badge>
+                  <h3 className="mt-2 text-3xl font-bold text-foreground">{healthScore}%</h3>
+                  <Badge className={healthScore >= 80 ? "mt-2 bg-success text-success-foreground" : "mt-2 bg-warning text-warning-foreground"}>
+                    {healthScore >= 80 ? "Stable" : "Review"}
+                  </Badge>
                 </div>
                 <div className="rounded-lg bg-gradient-pasture p-3 text-white">
                   <FileText className="h-6 w-6" />
@@ -85,7 +129,9 @@ export default function Reports() {
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <p className="text-sm font-medium text-muted-foreground">Monthly Revenue</p>
-                  <h3 className="mt-2 text-3xl font-bold text-foreground">R 48,200</h3>
+                  <h3 className="mt-2 text-3xl font-bold text-foreground">
+                    {marketplaceRevenue.toFixed(2)}
+                  </h3>
                   <p className="mt-2 text-sm text-muted-foreground">Marketplace + Direct</p>
                 </div>
                 <div className="rounded-lg bg-sky p-3 text-white">
@@ -101,7 +147,7 @@ export default function Reports() {
             <CardTitle className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <span>Available Reports</span>
               <div className="flex w-full flex-col gap-3 md:w-auto md:flex-row md:items-center">
-                <Select defaultValue="30d">
+                <Select value={period} onValueChange={setPeriod}>
                   <SelectTrigger className="w-full md:w-44">
                     <SelectValue placeholder="Period" />
                   </SelectTrigger>
@@ -118,34 +164,44 @@ export default function Reports() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              {reports.map((r) => (
-                <div
-                  key={r.id}
-                  className="flex flex-col gap-3 rounded-lg border border-border p-4 md:flex-row md:items-center md:justify-between"
-                >
-                  <div>
-                    <p className="font-medium">{r.name}</p>
-                    <p className="text-sm text-muted-foreground">{r.period}</p>
+            {activeFarmId == null ? (
+              <div className="text-sm text-muted-foreground">Select a farm to view reports.</div>
+            ) : healthReportQuery.isLoading || opsReportQuery.isLoading || finReportQuery.isLoading ? (
+              <div className="text-sm text-muted-foreground">Loading reports...</div>
+            ) : healthReportQuery.isError || opsReportQuery.isError || finReportQuery.isError ? (
+              <div className="text-sm text-destructive">
+                Failed to load one or more reports.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {reports.map((r) => (
+                  <div
+                    key={r.id}
+                    className="flex flex-col gap-3 rounded-lg border border-border p-4 md:flex-row md:items-center md:justify-between"
+                  >
+                    <div>
+                      <p className="font-medium">{r.name}</p>
+                      <p className="text-sm text-muted-foreground">{r.period}</p>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 md:justify-end">
+                      <Badge
+                        className={
+                          r.status === "ready"
+                            ? "bg-success text-success-foreground"
+                            : "bg-warning text-warning-foreground"
+                        }
+                      >
+                        {r.status}
+                      </Badge>
+                      <Button variant="outline" size="sm">
+                        <Download className="mr-2 h-4 w-4" />
+                        Export
+                      </Button>
+                    </div>
                   </div>
-                  <div className="flex items-center justify-between gap-3 md:justify-end">
-                    <Badge
-                      className={
-                        r.status === "ready"
-                          ? "bg-success text-success-foreground"
-                          : "bg-warning text-warning-foreground"
-                      }
-                    >
-                      {r.status}
-                    </Badge>
-                    <Button variant="outline" size="sm">
-                      <Download className="mr-2 h-4 w-4" />
-                      Export
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

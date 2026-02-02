@@ -4,8 +4,16 @@ namespace Database\Seeders;
 
 use App\Models\Farm;
 use App\Models\Animal;
+use App\Models\Alert;
+use App\Models\AlertAction;
+use App\Models\BreedingRecord;
+use App\Models\FeedSchedule;
+use App\Models\HealthRecord;
+use App\Models\Pasture;
 use App\Models\Sensor;
+use App\Models\SensorReading;
 use App\Models\User;
+use App\Models\Vaccination;
 use App\Models\Marketplace\Category;
 use App\Models\Marketplace\Listing;
 use App\Models\Marketplace\Order;
@@ -31,6 +39,7 @@ class DemoDataSeeder extends Seeder
      */
     public function run(): void
     {
+        // Seed users (admin, demo farmer, demo buyer, extra farmers for multi-farm testing)
         $admin = User::firstOrCreate(
             ['email' => 'admin@livemo.com'],
             [
@@ -44,7 +53,6 @@ class DemoDataSeeder extends Seeder
             ]
         );
 
-        // Create demo user
         $user = User::firstOrCreate(
             ['email' => 'demo@livemo.com'],
             [
@@ -71,22 +79,97 @@ class DemoDataSeeder extends Seeder
             ]
         );
 
-        // Create demo farm
-        $farm = Farm::create([
-            'user_id' => $user->id,
-            'name' => 'Green Valley Farm',
-            'description' => 'A demonstration farm for Livemo platform',
-            'location' => 'Kigali, Rwanda',
-            'size' => 50.5,
-            'latitude' => -1.9536,
-            'longitude' => 30.0606,
-            'contact_phone' => '+250788123456',
-            'contact_email' => 'demo@livemo.com',
-            'city' => 'Kigali',
-            'country' => 'RW',
-        ]);
+        // Extra farmers for multi-farm testing
+        $farmer2 = User::firstOrCreate(
+            ['email' => 'farmer2@livemo.com'],
+            [
+                'name' => 'Second Farmer',
+                'password' => Hash::make('password'),
+                'phone' => '+250788222222',
+                'role' => 'farmer',
+                'status' => 'active',
+                'is_verified' => true,
+                'verified_at' => now(),
+            ]
+        );
 
-        // Create demo animals
+        $farmer3 = User::firstOrCreate(
+            ['email' => 'farmer3@livemo.com'],
+            [
+                'name' => 'Third Farmer',
+                'password' => Hash::make('password'),
+                'phone' => '+250788333333',
+                'role' => 'farmer',
+                'status' => 'active',
+                'is_verified' => true,
+                'verified_at' => now(),
+            ]
+        );
+
+        // Create demo farm
+        $farm = Farm::firstOrCreate(
+            ['user_id' => $user->id, 'name' => 'Green Valley Farm'],
+            [
+                'description' => 'A demonstration farm for Livemo platform',
+                'location' => 'Kigali, Rwanda',
+                'size' => 50.5,
+                'latitude' => -1.9536,
+                'longitude' => 30.0606,
+                'contact_phone' => '+250788123456',
+                'contact_email' => 'demo@livemo.com',
+                'city' => 'Kigali',
+                'country' => 'RW',
+            ]
+        );
+
+        // Create a second farm for multi-farm dashboards
+        $farm2 = Farm::firstOrCreate(
+            ['user_id' => $user->id, 'name' => 'Hillside Ranch'],
+            [
+                'description' => 'Secondary demo farm to validate multi-farm UI',
+                'location' => 'Musanze, Rwanda',
+                'size' => 24.0,
+                'latitude' => -1.4999,
+                'longitude' => 29.6340,
+                'contact_phone' => '+250788123456',
+                'contact_email' => 'demo@livemo.com',
+                'city' => 'Musanze',
+                'country' => 'RW',
+            ]
+        );
+
+        // Farms for extra farmers
+        $farmFarmer2 = Farm::firstOrCreate(
+            ['user_id' => $farmer2->id, 'name' => 'Sunrise Farm'],
+            [
+                'description' => 'Farm for second demo user',
+                'location' => 'Rubavu, Rwanda',
+                'size' => 18.0,
+                'latitude' => -1.5055,
+                'longitude' => 29.2583,
+                'contact_phone' => '+250788222222',
+                'contact_email' => 'farmer2@livemo.com',
+                'city' => 'Rubavu',
+                'country' => 'RW',
+            ]
+        );
+
+        $farmFarmer3 = Farm::firstOrCreate(
+            ['user_id' => $farmer3->id, 'name' => 'Meadow Farm'],
+            [
+                'description' => 'Farm for third demo user',
+                'location' => 'Huye, Rwanda',
+                'size' => 12.5,
+                'latitude' => -2.5970,
+                'longitude' => 29.7399,
+                'contact_phone' => '+250788333333',
+                'contact_email' => 'farmer3@livemo.com',
+                'city' => 'Huye',
+                'country' => 'RW',
+            ]
+        );
+
+        // Create demo animals (farm 1)
         $animals = [
             [
                 'tag_id' => 'COW001',
@@ -126,18 +209,288 @@ class DemoDataSeeder extends Seeder
             ],
         ];
 
+        $createdAnimals = [];
         foreach ($animals as $animalData) {
-            $animal = Animal::create(array_merge($animalData, ['farm_id' => $farm->id]));
+            $animal = Animal::firstOrCreate(
+                ['tag_id' => $animalData['tag_id']],
+                array_merge($animalData, ['farm_id' => $farm->id])
+            );
+            $createdAnimals[] = $animal;
 
             // Create a sensor for each animal
-            Sensor::create([
-                'device_id' => 'SENSOR_' . $animal->tag_id,
-                'type' => 'collar',
+            $sensor = Sensor::firstOrCreate(
+                ['device_id' => 'SENSOR_' . $animal->tag_id],
+                [
+                    'type' => 'collar',
+                    'animal_id' => $animal->id,
+                    'farm_id' => $farm->id,
+                    'status' => 'active',
+                    'battery_level' => rand(60, 100),
+                    'last_communication' => now(),
+                ]
+            );
+
+            // Create sensor readings history (last 24 hours, every 2 hours)
+            for ($i = 0; $i < 12; $i++) {
+                $t = now()->subHours(24 - ($i * 2));
+                $temp = $animal->tag_id === 'COW001' && $i >= 10 ? 40.6 : (38.2 + (rand(-5, 8) / 10));
+                $hr = $animal->type === 'cattle' ? rand(55, 75) : rand(70, 95);
+
+                SensorReading::create([
+                    'sensor_id' => $sensor->id,
+                    'farm_id' => $farm->id,
+                    'animal_id' => $animal->id,
+                    'recorded_at' => $t,
+                    'temperature' => $temp,
+                    'heart_rate' => $hr,
+                    'activity_level' => rand(40, 95),
+                    'battery_level' => $sensor->battery_level,
+                    'metadata' => ['source' => 'demo_seeder'],
+                ]);
+            }
+
+            // Create health records (observations) for dashboards
+            HealthRecord::create([
                 'animal_id' => $animal->id,
+                'record_type' => 'checkup',
+                'temperature' => 38.6,
+                'heart_rate' => $animal->type === 'cattle' ? 65 : 85,
+                'activity_level' => rand(60, 95),
+                'diagnosis' => null,
+                'symptoms' => null,
+                'treatment' => null,
+                'notes' => 'Routine checkup (demo)',
+                'veterinarian' => 'Dr. Demo',
+                'severity' => 'normal',
+            ]);
+
+            // Vaccination schedule
+            Vaccination::firstOrCreate(
+                ['animal_id' => $animal->id, 'vaccine_name' => 'FMD Vaccine', 'administered_date' => now()->subMonths(6)->toDateString()],
+                [
+                    'vaccine_type' => 'routine',
+                    'batch_number' => 'BATCH-' . strtoupper(Str::random(6)),
+                    'next_due_date' => now()->addMonths(6)->toDateString(),
+                    'administered_by' => 'Dr. Demo',
+                    'dosage' => 2.0,
+                    'dosage_unit' => 'ml',
+                    'administration_route' => 'IM',
+                    'notes' => 'Demo vaccination record',
+                    'is_booster' => false,
+                ]
+            );
+        }
+
+        // Farm 2 animals to validate multi-farm
+        $farm2Animals = [
+            [
+                'tag_id' => 'SHEEP001',
+                'name' => 'Cotton',
+                'type' => 'sheep',
+                'breed' => 'Merino',
+                'gender' => 'female',
+                'birth_date' => now()->subYears(2),
+                'weight' => 55.0,
+                'color' => 'White',
+                'status' => 'healthy',
+                'health_score' => 90,
+            ],
+            [
+                'tag_id' => 'PIG001',
+                'name' => 'Porky',
+                'type' => 'swine',
+                'breed' => 'Large White',
+                'gender' => 'male',
+                'birth_date' => now()->subYears(1),
+                'weight' => 95.0,
+                'color' => 'Pink',
+                'status' => 'healthy',
+                'health_score' => 86,
+            ],
+        ];
+
+        $farm2CreatedAnimals = [];
+        foreach ($farm2Animals as $animalData) {
+            $animal = Animal::firstOrCreate(
+                ['tag_id' => $animalData['tag_id']],
+                array_merge($animalData, ['farm_id' => $farm2->id])
+            );
+            $farm2CreatedAnimals[] = $animal;
+
+            $sensor = Sensor::firstOrCreate(
+                ['device_id' => 'SENSOR_' . $animal->tag_id],
+                [
+                    'type' => 'ear_tag',
+                    'animal_id' => $animal->id,
+                    'farm_id' => $farm2->id,
+                    'status' => 'active',
+                    'battery_level' => rand(45, 95),
+                    'last_communication' => now()->subMinutes(rand(0, 25)),
+                ]
+            );
+
+            SensorReading::create([
+                'sensor_id' => $sensor->id,
+                'farm_id' => $farm2->id,
+                'animal_id' => $animal->id,
+                'recorded_at' => now()->subMinutes(10),
+                'temperature' => 38.4,
+                'heart_rate' => rand(60, 95),
+                'activity_level' => rand(40, 95),
+                'battery_level' => $sensor->battery_level,
+                'metadata' => ['source' => 'demo_seeder'],
+            ]);
+        }
+
+        // Minimal animals/sensors/readings for extra farmers (so their dashboards aren’t empty)
+        foreach ([$farmFarmer2, $farmFarmer3] as $idx => $extraFarm) {
+            $extraAnimal = Animal::firstOrCreate(
+                ['tag_id' => 'EXTRA' . ($idx + 1) . '001'],
+                [
+                    'farm_id' => $extraFarm->id,
+                    'name' => 'Demo Animal ' . ($idx + 1),
+                    'type' => 'cattle',
+                    'breed' => 'Local',
+                    'gender' => 'female',
+                    'birth_date' => now()->subYears(2),
+                    'weight' => 300.0,
+                    'color' => 'Brown',
+                    'status' => 'healthy',
+                    'health_score' => 85,
+                ]
+            );
+
+            $extraSensor = Sensor::firstOrCreate(
+                ['device_id' => 'SENSOR_EXTRA' . ($idx + 1) . '001'],
+                [
+                    'type' => 'collar',
+                    'animal_id' => $extraAnimal->id,
+                    'farm_id' => $extraFarm->id,
+                    'status' => 'active',
+                    'battery_level' => rand(50, 95),
+                    'last_communication' => now()->subMinutes(rand(0, 30)),
+                ]
+            );
+
+            SensorReading::create([
+                'sensor_id' => $extraSensor->id,
+                'farm_id' => $extraFarm->id,
+                'animal_id' => $extraAnimal->id,
+                'recorded_at' => now()->subMinutes(5),
+                'temperature' => 38.2,
+                'heart_rate' => rand(60, 80),
+                'activity_level' => rand(45, 90),
+                'battery_level' => $extraSensor->battery_level,
+                'metadata' => ['source' => 'demo_seeder'],
+            ]);
+        }
+
+        // Pastures + assignments (farm 1)
+        $pastureA = Pasture::firstOrCreate(
+            ['farm_id' => $farm->id, 'name' => 'Pasture A'],
+            [
+                'description' => 'Main grazing paddock',
+                'size' => 10.5,
+                'capacity' => 80,
+                'current_occupancy' => 0,
+                'quality' => 'good',
+                'last_rotation' => now()->subDays(20)->toDateString(),
+                'next_rotation' => now()->addDays(5)->toDateString(),
+                'notes' => 'Rotate in 5 days',
+                'is_active' => true,
+            ]
+        );
+        $pastureB = Pasture::firstOrCreate(
+            ['farm_id' => $farm->id, 'name' => 'Pasture B'],
+            [
+                'description' => 'Secondary paddock',
+                'size' => 6.2,
+                'capacity' => 40,
+                'current_occupancy' => 0,
+                'quality' => 'excellent',
+                'last_rotation' => now()->subDays(35)->toDateString(),
+                'next_rotation' => now()->addDays(12)->toDateString(),
+                'is_active' => true,
+            ]
+        );
+
+        foreach ($createdAnimals as $idx => $animal) {
+            if ($idx === 0) {
+                $pastureA->assignAnimal($animal->id, 'Demo assignment');
+            } else {
+                $pastureB->assignAnimal($animal->id, 'Demo assignment');
+            }
+        }
+
+        // Feed schedules (farm 1)
+        FeedSchedule::firstOrCreate(
+            ['farm_id' => $farm->id, 'feed_type' => 'Hay + Grain Mix', 'scheduled_time' => '06:00:00'],
+            [
+                'group_name' => 'Dairy Cows',
+                'quantity' => 30.0,
+                'days_of_week' => [1,2,3,4,5,6,7],
+                'is_recurring' => true,
+                'is_completed' => false,
+                'notes' => 'Morning feeding (demo)',
+            ]
+        );
+        FeedSchedule::firstOrCreate(
+            ['farm_id' => $farm->id, 'feed_type' => 'Pellets', 'scheduled_time' => '09:30:00'],
+            [
+                'group_name' => 'Goats',
+                'quantity' => 8.0,
+                'days_of_week' => [1,2,3,4,5,6,7],
+                'is_recurring' => true,
+                'is_completed' => true,
+                'completed_at' => now()->subHours(2),
+                'completed_by' => $user->id,
+                'notes' => 'Completed (demo)',
+            ]
+        );
+
+        // Breeding record (farm 1)
+        if (count($createdAnimals) >= 2) {
+            $mother = $createdAnimals[0];
+            $father = $createdAnimals[1];
+
+            $breeding = BreedingRecord::firstOrCreate(
+                ['farm_id' => $farm->id, 'mother_id' => $mother->id, 'breeding_date' => now()->subDays(60)->toDateString()],
+                [
+                    'father_id' => $father->id,
+                    'method' => 'natural',
+                    'status' => 'confirmed_pregnant',
+                    'notes' => 'Demo breeding record',
+                ]
+            );
+
+            if (!$breeding->expected_birth_date) {
+                $breeding->loadMissing('mother');
+                $breeding->calculateExpectedBirthDate();
+            }
+        }
+
+        // Alerts + actions (farm 1)
+        if (count($createdAnimals) > 0) {
+            $animal = $createdAnimals[0];
+            $sensor = Sensor::where('animal_id', $animal->id)->first();
+
+            $alert = Alert::create([
                 'farm_id' => $farm->id,
-                'status' => 'active',
-                'battery_level' => rand(60, 100),
-                'last_communication' => now(),
+                'animal_id' => $animal->id,
+                'sensor_id' => $sensor?->id,
+                'type' => 'health_critical',
+                'severity' => 'critical',
+                'title' => 'High Temperature',
+                'message' => "{$animal->tag_id} temperature is elevated (demo)",
+                'metadata' => ['pasture_id' => $pastureA->id],
+                'status' => 'pending',
+            ]);
+
+            AlertAction::create([
+                'alert_id' => $alert->id,
+                'user_id' => $user->id,
+                'action_type' => 'created',
+                'notes' => 'Created by demo seeder',
             ]);
         }
 

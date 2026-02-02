@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Marketplace\CartItem;
 use App\Models\Marketplace\Order;
 use App\Models\Marketplace\OrderItem;
+use App\Models\Animal;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -147,9 +148,17 @@ class CheckoutController extends Controller
                 $total = $subtotal + $deliveryFee + $tax;
 
                 // Create order
+                // Infer farm_id from the first listing’s listable (if Animal)
+                $firstListing = $items->first()->listing;
+                $farmId = null;
+                if ($firstListing && $firstListing->listable_type === Animal::class) {
+                    $farmId = $firstListing->listable->farm_id;
+                }
+
                 $order = Order::create([
                     'buyer_id' => auth()->id(),
                     'seller_id' => $sellerId,
+                    'farm_id' => $farmId,
                     'subtotal' => $subtotal,
                     'delivery_fee' => $deliveryFee,
                     'tax' => $tax,
