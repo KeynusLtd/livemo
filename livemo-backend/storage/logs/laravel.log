@@ -3071,3 +3071,26 @@ LINE 1: insert into \"personal_access_tokens\" (\"name\", \"token\", \"abil...
 #59 D:/remy/livemo/livemo-backend/vendor/laravel/framework/src/Illuminate/Foundation/resources/server.php(23): require_once('D://remy//livemo//...')
 #60 {main}
 "} 
+[2026-02-05 14:36:40] local.ERROR: PHP Parse error: Syntax error, unexpected T_NS_SEPARATOR on line 1 {"exception":"[object] (Psy\\Exception\\ParseErrorException(code: 0): PHP Parse error: Syntax error, unexpected T_NS_SEPARATOR on line 1 at D:/remy/livemo/livemo-backend/vendor/psy/psysh/src/Exception/ParseErrorException.php:44)
+[stacktrace]
+#0 D:/remy/livemo/livemo-backend/vendor/psy/psysh/src/CodeCleaner.php(488): Psy/Exception/ParseErrorException::fromParseError(Object(PhpParser/Error))
+#1 D:/remy/livemo/livemo-backend/vendor/psy/psysh/src/CodeCleaner.php(269): Psy/CodeCleaner->parse('<?php echo ////Ap...', false)
+#2 D:/remy/livemo/livemo-backend/vendor/psy/psysh/src/Shell.php(985): Psy/CodeCleaner->clean(Array, false)
+#3 D:/remy/livemo/livemo-backend/vendor/psy/psysh/src/Shell.php(1018): Psy/Shell->addCode('echo ////App////Mod...', true)
+#4 D:/remy/livemo/livemo-backend/vendor/psy/psysh/src/Shell.php(1562): Psy/Shell->setCode('echo ////App////Mod...', true)
+#5 D:/remy/livemo/livemo-backend/vendor/laravel/tinker/src/Console/TinkerCommand.php(76): Psy/Shell->execute('echo ////App////Mod...')
+#6 D:/remy/livemo/livemo-backend/vendor/laravel/framework/src/Illuminate/Container/BoundMethod.php(36): Laravel/Tinker/Console/TinkerCommand->handle()
+#7 D:/remy/livemo/livemo-backend/vendor/laravel/framework/src/Illuminate/Container/Util.php(43): Illuminate/Container/BoundMethod::Illuminate/Container/{closure}()
+#8 D:/remy/livemo/livemo-backend/vendor/laravel/framework/src/Illuminate/Container/BoundMethod.php(96): Illuminate/Container/Util::unwrapIfClosure(Object(Closure))
+#9 D:/remy/livemo/livemo-backend/vendor/laravel/framework/src/Illuminate/Container/BoundMethod.php(35): Illuminate/Container/BoundMethod::callBoundMethod(Object(Illuminate/Foundation/Application), Array, Object(Closure))
+#10 D:/remy/livemo/livemo-backend/vendor/laravel/framework/src/Illuminate/Container/Container.php(799): Illuminate/Container/BoundMethod::call(Object(Illuminate/Foundation/Application), Array, Array, NULL)
+#11 D:/remy/livemo/livemo-backend/vendor/laravel/framework/src/Illuminate/Console/Command.php(211): Illuminate/Container/Container->call(Array)
+#12 D:/remy/livemo/livemo-backend/vendor/symfony/console/Command/Command.php(341): Illuminate/Console/Command->execute(Object(Symfony/Component/Console/Input/ArgvInput), Object(Illuminate/Console/OutputStyle))
+#13 D:/remy/livemo/livemo-backend/vendor/laravel/framework/src/Illuminate/Console/Command.php(180): Symfony/Component/Console/Command/Command->run(Object(Symfony/Component/Console/Input/ArgvInput), Object(Illuminate/Console/OutputStyle))
+#14 D:/remy/livemo/livemo-backend/vendor/symfony/console/Application.php(1102): Illuminate/Console/Command->run(Object(Symfony/Component/Console/Input/ArgvInput), Object(Symfony/Component/Console/Output/ConsoleOutput))
+#15 D:/remy/livemo/livemo-backend/vendor/symfony/console/Application.php(356): Symfony/Component/Console/Application->doRunCommand(Object(Laravel/Tinker/Console/TinkerCommand), Object(Symfony/Component/Console/Input/ArgvInput), Object(Symfony/Component/Console/Output/ConsoleOutput))
+#16 D:/remy/livemo/livemo-backend/vendor/symfony/console/Application.php(195): Symfony/Component/Console/Application->doRun(Object(Symfony/Component/Console/Input/ArgvInput), Object(Symfony/Component/Console/Output/ConsoleOutput))
+#17 D:/remy/livemo/livemo-backend/vendor/laravel/framework/src/Illuminate/Foundation/Console/Kernel.php(198): Symfony/Component/Console/Application->run(Object(Symfony/Component/Console/Input/ArgvInput), Object(Symfony/Component/Console/Output/ConsoleOutput))
+#18 D:/remy/livemo/livemo-backend/artisan(13): Illuminate/Foundation/Console/Kernel->handle(Object(Symfony/Component/Console/Input/ArgvInput), Object(Symfony/Component/Console/Output/ConsoleOutput))
+#19 {main}
+"} 
