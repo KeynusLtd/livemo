@@ -13,21 +13,30 @@ import { Plus, Search } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { listAnimals } from "@/lib/animalApi";
 import type { Animal } from "@/lib/animalApi";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useActiveFarm } from "@/hooks/useActiveFarm";
 
 export default function Animals() {
+  const navigate = useNavigate();
+  const { activeFarmId } = useActiveFarm();
   const [search, setSearch] = useState("");
   const [type, setType] = useState("all");
   const [status, setStatus] = useState("all");
   const [page, setPage] = useState(1);
 
+  useEffect(() => {
+    setPage(1);
+  }, [activeFarmId]);
+
   const queryParams = useMemo(
     () => ({
+      farm_id: activeFarmId ?? undefined,
       search: search.trim().length > 0 ? search.trim() : undefined,
       type: type !== "all" ? type : undefined,
       status: status !== "all" ? status : undefined,
     }),
-    [search, status, type]
+    [activeFarmId, search, status, type]
   );
 
   const { data, isLoading, isError, error, isFetching } = useQuery({
@@ -51,7 +60,10 @@ export default function Animals() {
               Manage and monitor your livestock
             </p>
           </div>
-          <Button className="bg-gradient-earth text-white shadow-md hover:opacity-90">
+          <Button
+            className="bg-gradient-earth text-white shadow-md hover:opacity-90"
+            onClick={() => navigate("/animals/new")}
+          >
             <Plus className="mr-2 h-4 w-4" />
             Add Animal
           </Button>

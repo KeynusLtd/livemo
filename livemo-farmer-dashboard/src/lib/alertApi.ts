@@ -26,12 +26,14 @@ export type AlertStats = {
 export async function listAlerts(params: {
   page?: number;
   farm_id?: number;
+  animal_id?: number;
   status?: string;
   severity?: string;
 }) {
   const qs = new URLSearchParams();
   if (params.page) qs.set("page", String(params.page));
   if (params.farm_id) qs.set("farm_id", String(params.farm_id));
+  if (params.animal_id) qs.set("animal_id", String(params.animal_id));
   if (params.status) qs.set("status", params.status);
   if (params.severity) qs.set("severity", params.severity);
 

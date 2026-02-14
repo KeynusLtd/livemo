@@ -3,12 +3,32 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { MapPin, Plus, RefreshCw, Sprout } from "lucide-react";
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useActiveFarm } from "@/hooks/useActiveFarm";
-import { listPastures } from "@/lib/pastureApi";
+import { useToast } from "@/hooks/use-toast";
+import { listAnimals } from "@/lib/animalApi";
+import type { Animal } from "@/lib/animalApi";
+import { assignAnimalToPasture, createPasture, listPastures } from "@/lib/pastureApi";
 import type { Pasture as PastureType } from "@/lib/pastureApi";
+import { useNavigate } from "react-router-dom";
 
 function daysUntil(dateIso?: string | null) {
   if (!dateIso) return null;
@@ -18,8 +38,23 @@ function daysUntil(dateIso?: string | null) {
 }
 
 export default function Pasture() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
   const { activeFarmId } = useActiveFarm();
+  const navigate = useNavigate();
   const [page, setPage] = useState(1);
+
+  const [addOpen, setAddOpen] = useState(false);
+  const [pName, setPName] = useState("");
+  const [pSize, setPSize] = useState("5");
+  const [pCapacity, setPCapacity] = useState("10");
+  const [pQuality, setPQuality] = useState("good");
+  const [pNextRotation, setPNextRotation] = useState("");
+  const [pNotes, setPNotes] = useState("");
+
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [assignPastureId, setAssignPastureId] = useState<number | null>(null);
+  const [assignAnimalId, setAssignAnimalId] = useState<number | null>(null);
 
   const pasturesQuery = useQuery({
     queryKey: ["pastures", activeFarmId, page],
@@ -27,6 +62,15 @@ export default function Pasture() {
     enabled: activeFarmId != null,
     staleTime: 10_000,
   });
+
+  const animalsQuery = useQuery({
+    queryKey: ["pastureAnimals", activeFarmId],
+    queryFn: () => listAnimals({ farm_id: activeFarmId ?? undefined, page: 1 }),
+    enabled: activeFarmId != null,
+    staleTime: 30_000,
+  });
+
+  const animals: Animal[] = useMemo(() => animalsQuery.data?.data ?? [], [animalsQuery.data?.data]);
 
   const pastures: PastureType[] = useMemo(() => pasturesQuery.data?.data ?? [], [pasturesQuery.data?.data]);
 
@@ -41,6 +85,81 @@ export default function Pasture() {
     }).length;
   }, [pastures]);
 
+  const createMutation = useMutation({
+    mutationFn: (payload: {
+      farmId: number;
+      name: string;
+      size: number;
+      capacity: number;
+      quality: string;
+      next_rotation?: string;
+      notes?: string;
+    }) =>
+      createPasture({
+        farmId: payload.farmId,
+        payload: {
+          name: payload.name,
+          size: payload.size,
+          capacity: payload.capacity,
+          quality: payload.quality,
+          next_rotation: payload.next_rotation,
+          notes: payload.notes,
+          is_active: true,
+        },
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["pastures"] });
+      toast({ title: "Paddock added" });
+      setAddOpen(false);
+      setPName("");
+      setPSize("5");
+      setPCapacity("10");
+      setPQuality("good");
+      setPNextRotation("");
+      setPNotes("");
+    },
+    onError: (err: unknown) => {
+      toast({
+        variant: "destructive",
+        title: "Failed",
+        description: err instanceof Error ? err.message : "Failed to add paddock",
+      });
+    },
+  });
+
+  const assignMutation = useMutation({
+    mutationFn: (payload: { farmId: number; pastureId: number; animalId: number }) =>
+      assignAnimalToPasture({ farmId: payload.farmId, pastureId: payload.pastureId, animal_id: payload.animalId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["pastures"] });
+      toast({ title: "Animal assigned" });
+      setAssignOpen(false);
+      setAssignPastureId(null);
+      setAssignAnimalId(null);
+    },
+    onError: (err: unknown) => {
+      toast({
+        variant: "destructive",
+        title: "Failed",
+        description: err instanceof Error ? err.message : "Failed to assign animal",
+      });
+    },
+  });
+
+  const canCreate =
+    activeFarmId != null &&
+    pName.trim().length > 0 &&
+    Number.isFinite(Number(pSize)) &&
+    Number(pSize) > 0 &&
+    Number.isFinite(Number(pCapacity)) &&
+    Number(pCapacity) >= 0;
+
+  const openAssign = (pasture: PastureType) => {
+    setAssignPastureId(pasture.id);
+    setAssignAnimalId(null);
+    setAssignOpen(true);
+  };
+
   const utilizationAvg = useMemo(() => {
     if (pastures.length === 0) return 0;
     const vals = pastures.map((p) => {
@@ -54,6 +173,152 @@ export default function Pasture() {
   return (
     <Layout>
       <div className="space-y-6">
+        <Dialog
+          open={addOpen}
+          onOpenChange={(v) => {
+            setAddOpen(v);
+            if (!v) {
+              setPName("");
+              setPSize("5");
+              setPCapacity("10");
+              setPQuality("good");
+              setPNextRotation("");
+              setPNotes("");
+            }
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Add Paddock</DialogTitle>
+              <DialogDescription>Create a paddock and optionally set next rotation date.</DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <div className="text-sm font-medium">Name</div>
+                <Input value={pName} onChange={(e) => setPName(e.target.value)} placeholder="Pasture C" />
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="space-y-2">
+                  <div className="text-sm font-medium">Size (hectares)</div>
+                  <Input value={pSize} onChange={(e) => setPSize(e.target.value)} placeholder="5" />
+                </div>
+                <div className="space-y-2">
+                  <div className="text-sm font-medium">Capacity</div>
+                  <Input value={pCapacity} onChange={(e) => setPCapacity(e.target.value)} placeholder="10" />
+                </div>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="space-y-2">
+                  <div className="text-sm font-medium">Quality</div>
+                  <Select value={pQuality} onValueChange={setPQuality}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Quality" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="excellent">excellent</SelectItem>
+                      <SelectItem value="good">good</SelectItem>
+                      <SelectItem value="fair">fair</SelectItem>
+                      <SelectItem value="poor">poor</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <div className="text-sm font-medium">Next rotation (YYYY-MM-DD)</div>
+                  <Input value={pNextRotation} onChange={(e) => setPNextRotation(e.target.value)} placeholder="2026-02-21" />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-sm font-medium">Notes (optional)</div>
+                <Input value={pNotes} onChange={(e) => setPNotes(e.target.value)} placeholder="Irrigated, high grass" />
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setAddOpen(false)} disabled={createMutation.isPending}>
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  if (!canCreate || activeFarmId == null) return;
+                  createMutation.mutate({
+                    farmId: activeFarmId,
+                    name: pName.trim(),
+                    size: Number(pSize),
+                    capacity: Number(pCapacity),
+                    quality: pQuality,
+                    next_rotation: pNextRotation.trim().length > 0 ? pNextRotation.trim() : undefined,
+                    notes: pNotes.trim().length > 0 ? pNotes.trim() : undefined,
+                  });
+                }}
+                disabled={!canCreate || createMutation.isPending}
+              >
+                {createMutation.isPending ? "Saving..." : "Save"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={assignOpen}
+          onOpenChange={(v) => {
+            setAssignOpen(v);
+            if (!v) {
+              setAssignPastureId(null);
+              setAssignAnimalId(null);
+            }
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Assign Animal</DialogTitle>
+              <DialogDescription>Select an animal to place in this paddock.</DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-2">
+              <div className="text-sm font-medium">Animal</div>
+              <Select
+                value={assignAnimalId != null ? String(assignAnimalId) : ""}
+                onValueChange={(v) => setAssignAnimalId(v ? Number(v) : null)}
+                disabled={animalsQuery.isLoading || animals.length === 0}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={animals.length === 0 ? "No animals" : "Select animal"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {animals.map((a) => (
+                    <SelectItem key={a.id} value={String(a.id)}>
+                      {(a.name && a.name.trim().length > 0 ? a.name : "Unnamed") + " • " + a.tag_id}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setAssignOpen(false)} disabled={assignMutation.isPending}>
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  if (activeFarmId == null || assignPastureId == null || assignAnimalId == null) return;
+                  assignMutation.mutate({
+                    farmId: activeFarmId,
+                    pastureId: assignPastureId,
+                    animalId: assignAnimalId,
+                  });
+                }}
+                disabled={assignPastureId == null || assignAnimalId == null || assignMutation.isPending}
+              >
+                {assignMutation.isPending ? "Saving..." : "Assign"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-3xl font-bold text-foreground">Pasture</h1>
@@ -62,11 +327,15 @@ export default function Pasture() {
             </p>
           </div>
           <div className="flex flex-col gap-3 md:flex-row">
-            <Button variant="outline">
+            <Button variant="outline" onClick={() => pasturesQuery.refetch()} disabled={pasturesQuery.isFetching}>
               <RefreshCw className="mr-2 h-4 w-4" />
               Refresh
             </Button>
-            <Button className="bg-gradient-earth text-white shadow-md hover:opacity-90">
+            <Button
+              className="bg-gradient-earth text-white shadow-md hover:opacity-90"
+              onClick={() => setAddOpen(true)}
+              disabled={activeFarmId == null}
+            >
               <Plus className="mr-2 h-4 w-4" />
               Add Paddock
             </Button>
@@ -195,8 +464,12 @@ export default function Pasture() {
                               {statusLabel}
                             </Badge>
                           </div>
-                          <Button variant="outline" size="sm" disabled>
+                          <Button variant="outline" size="sm" onClick={() => navigate(`/pasture/${p.id}`)}>
                             Details
+                          </Button>
+
+                          <Button variant="outline" size="sm" onClick={() => openAssign(p)}>
+                            Assign animal
                           </Button>
                         </div>
                       </div>

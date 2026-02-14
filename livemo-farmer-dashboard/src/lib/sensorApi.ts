@@ -47,6 +47,24 @@ export async function createSensor(payload: {
   });
 }
 
+export async function updateSensor(payload: {
+  sensorId: number;
+  animal_id?: number | null;
+  status?: string;
+  battery_level?: number | null;
+  configuration?: unknown;
+}) {
+  return apiFetch<{ message: string; sensor: Sensor }>(`/sensors/${payload.sensorId}`, {
+    method: 'PUT',
+    body: jsonBody({
+      animal_id: payload.animal_id,
+      status: payload.status,
+      battery_level: payload.battery_level,
+      configuration: payload.configuration,
+    }),
+  });
+}
+
 export async function getSensorReadings(params: {
   sensorId: number;
   from?: string;

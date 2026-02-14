@@ -23,7 +23,7 @@ function joinUrl(baseUrl: string, path: string) {
 
 function getApiBaseUrl() {
   const envBase = import.meta.env.VITE_API_BASE_URL as string | undefined;
-  return (envBase && envBase.trim().length > 0 ? envBase.trim() : "http://localhost:8000/api/v1").replace(/\/+$/, "");
+  return (envBase && envBase.trim().length > 0 ? envBase.trim() : "http://127.0.0.1:8000/api/v1").replace(/\/+$/, "");
 }
 
 async function safeReadJson(res: Response) {
@@ -36,10 +36,7 @@ async function safeReadJson(res: Response) {
   }
 }
 
-export async function apiFetch<TResponse>(
-  path: string,
-  options: RequestInit & { auth?: boolean } = {}
-): Promise<TResponse> {
+async function buildRequest(path: string, options: RequestInit & { auth?: boolean } = {}) {
   const { auth = true, headers, ...rest } = options;
   const baseUrl = getApiBaseUrl();
 
@@ -58,6 +55,39 @@ export async function apiFetch<TResponse>(
   }
 
   const url = joinUrl(baseUrl, path);
+  return { url, rest, finalHeaders };
+}
+
+export async function apiFetchRaw(
+  path: string,
+  options: RequestInit & { auth?: boolean } = {}
+): Promise<Response> {
+  const { url, rest, finalHeaders } = await buildRequest(path, options);
+  const res = await fetch(url, {
+    ...rest,
+    headers: finalHeaders,
+  });
+
+  if (!res.ok) {
+    const payload = (await safeReadJson(res)) as ApiErrorPayload | undefined;
+    const message = payload?.message || `Request failed (${res.status})`;
+
+    if (res.status === 401) {
+      const { useAuthStore } = await import("@/stores/authStore");
+      useAuthStore.getState().clearSession();
+    }
+
+    throw new ApiError(res.status, message, payload);
+  }
+
+  return res;
+}
+
+export async function apiFetch<TResponse>(
+  path: string,
+  options: RequestInit & { auth?: boolean } = {}
+): Promise<TResponse> {
+  const { url, rest, finalHeaders } = await buildRequest(path, options);
   const res = await fetch(url, {
     ...rest,
     headers: finalHeaders,

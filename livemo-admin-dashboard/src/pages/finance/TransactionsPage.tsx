@@ -17,7 +17,7 @@ import {
     Typography,
 } from '@mui/material';
 import { Refresh as RefreshIcon, Search as SearchIcon } from '@mui/icons-material';
-import { getAdminFinanceSummary, getAdminTransactions } from '../../api/admin';
+import { buildAdminTransactionsExportCsvUrl, getAdminFinanceSummary, getAdminTransactions } from '../../api/admin';
 import type { AdminFinanceSummary, AdminOrder } from '../../api/admin';
 import { useAuthStore } from '../../stores/authStore';
 
@@ -63,6 +63,43 @@ const TransactionsPage = () => {
         }
     };
 
+    const handleExportCsv = async () => {
+        if (!token) return;
+        setError(null);
+        try {
+            const url = buildAdminTransactionsExportCsvUrl();
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                },
+            });
+
+            if (!response.ok) {
+                throw new Error(`Export failed (${response.status})`);
+            }
+
+            const blob = await response.blob();
+            const downloadUrl = URL.createObjectURL(blob);
+
+            const a = document.createElement('a');
+            a.href = downloadUrl;
+            const cd = response.headers.get('content-disposition');
+            const match = cd?.match(/filename="?([^\"]+)"?/i);
+            a.download = match?.[1] ?? 'transactions.csv';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(downloadUrl);
+        } catch (err: any) {
+            setError(err?.message ?? 'Failed to export CSV');
+        }
+    };
+
+    const handleExportPdf = () => {
+        window.print();
+    };
+
     useEffect(() => {
         loadTransactions();
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -77,9 +114,17 @@ const TransactionsPage = () => {
                     </Typography>
                     <Typography color="text.secondary">Audit payments flowing through the marketplace.</Typography>
                 </Box>
-                <Button startIcon={<RefreshIcon />} onClick={loadTransactions} disabled={loading}>
-                    Refresh
-                </Button>
+                <Stack direction="row" spacing={1}>
+                    <Button variant="outlined" onClick={handleExportPdf}>
+                        Export PDF
+                    </Button>
+                    <Button variant="outlined" onClick={handleExportCsv}>
+                        Export CSV
+                    </Button>
+                    <Button startIcon={<RefreshIcon />} onClick={loadTransactions} disabled={loading}>
+                        Refresh
+                    </Button>
+                </Stack>
             </Stack>
 
             {summary ? (

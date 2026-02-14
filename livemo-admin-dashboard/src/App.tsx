@@ -7,6 +7,7 @@ import UsersPage from './pages/users/UsersPage';
 import UserVerificationPage from './pages/users/UserVerificationPage';
 import ListingsPage from './pages/listings/ListingsPage';
 import CategoriesPage from './pages/categories/CategoriesPage';
+import AnimalCatalogsPage from './pages/catalog/AnimalCatalogsPage';
 import TransactionsPage from './pages/finance/TransactionsPage';
 import PayoutsPage from './pages/finance/PayoutsPage';
 import SettingsPage from './pages/system/SettingsPage';
@@ -30,6 +31,7 @@ function App() {
                         {/* Marketplace */}
                         <Route path="listings" element={<ListingsPage />} />
                         <Route path="categories" element={<CategoriesPage />} />
+                        <Route path="animal-catalogs" element={<AnimalCatalogsPage />} />
 
                         {/* Finance */}
                         <Route path="transactions" element={<TransactionsPage />} />

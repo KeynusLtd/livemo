@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Animal;
+use App\Models\AnimalCatalog;
+use App\Models\BreedingRecord;
 use App\Models\Farm;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -61,10 +63,9 @@ class AnimalController extends Controller
     {
         $validated = $request->validate([
             'farm_id' => 'required|exists:farms,id',
+            'catalog_id' => 'required|exists:animal_catalogs,id',
             'tag_id' => 'required|string|unique:animals,tag_id',
             'name' => 'nullable|string|max:255',
-            'type' => 'required|in:cattle,goats,sheep,poultry,swine,horses,rabbits',
-            'breed' => 'nullable|string|max:100',
             'gender' => 'nullable|in:male,female',
             'birth_date' => 'nullable|date|before:today',
             'weight' => 'nullable|numeric|min:0',
@@ -80,11 +81,21 @@ class AnimalController extends Controller
             abort(403);
         }
 
+        $catalog = AnimalCatalog::query()->where('id', $validated['catalog_id'])->where('is_active', true)->first();
+        if (!$catalog) {
+            return response()->json([
+                'message' => 'Invalid catalog animal selected',
+            ], 422);
+        }
+
+        $validated['type'] = $catalog->type;
+        $validated['breed'] = $catalog->breed;
+
         $animal = Animal::create($validated);
 
         return response()->json([
             'message' => 'Animal registered successfully',
-            'animal' => $animal->load('farm'),
+            'animal' => $animal->load(['farm', 'catalog']),
         ], 201);
     }
 
@@ -93,13 +104,14 @@ class AnimalController extends Controller
      */
     public function show(Request $request, Animal $animal): JsonResponse
     {
-        $animal->loadMissing('farm');
+        $animal->loadMissing(['farm', 'catalog']);
         if ($animal->farm && $animal->farm->user_id !== $request->user()->id) {
             abort(403);
         }
 
         $animal->load([
             'farm',
+            'catalog',
             'mother',
             'father',
             'sensors',
@@ -122,7 +134,7 @@ class AnimalController extends Controller
      */
     public function update(Request $request, Animal $animal): JsonResponse
     {
-        $animal->loadMissing('farm');
+        $animal->loadMissing(['farm', 'catalog']);
         if ($animal->farm && $animal->farm->user_id !== $request->user()->id) {
             abort(403);
         }
@@ -150,7 +162,7 @@ class AnimalController extends Controller
      */
     public function destroy(Request $request, Animal $animal): JsonResponse
     {
-        $animal->loadMissing('farm');
+        $animal->loadMissing(['farm', 'catalog']);
         if ($animal->farm && $animal->farm->user_id !== $request->user()->id) {
             abort(403);
         }
@@ -167,7 +179,7 @@ class AnimalController extends Controller
      */
     public function health(Request $request, Animal $animal): JsonResponse
     {
-        $animal->loadMissing('farm');
+        $animal->loadMissing(['farm', 'catalog']);
         if ($animal->farm && $animal->farm->user_id !== $request->user()->id) {
             abort(403);
         }
@@ -189,7 +201,7 @@ class AnimalController extends Controller
      */
     public function timeline(Request $request, Animal $animal): JsonResponse
     {
-        $animal->loadMissing('farm');
+        $animal->loadMissing(['farm', 'catalog']);
         if ($animal->farm && $animal->farm->user_id !== $request->user()->id) {
             abort(403);
         }
@@ -235,5 +247,28 @@ class AnimalController extends Controller
             'animal' => $animal,
             'timeline' => array_slice($timeline, 0, 20),
         ]);
+    }
+
+    /**
+     * Get breeding records for an animal (as mother or father).
+     */
+    public function breedingRecords(Request $request, Animal $animal): JsonResponse
+    {
+        $animal->loadMissing(['farm', 'catalog']);
+        if ($animal->farm && $animal->farm->user_id !== $request->user()->id) {
+            abort(403);
+        }
+
+        $records = BreedingRecord::query()
+            ->where('farm_id', $animal->farm_id)
+            ->where(function ($q) use ($animal) {
+                $q->where('mother_id', $animal->id)
+                    ->orWhere('father_id', $animal->id);
+            })
+            ->with(['mother', 'father'])
+            ->latest('breeding_date')
+            ->paginate(20);
+
+        return response()->json($records);
     }
 }

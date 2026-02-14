@@ -24,7 +24,8 @@ import {
     Receipt,
     AccountBalance,
     HealthAndSafety,
-    ShoppingCart
+    ShoppingCart,
+    Pets
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 
@@ -42,6 +43,11 @@ const menuItems: MenuItem[] = [
         title: 'Dashboard',
         path: '/admin',
         icon: <DashboardIcon />,
+    },
+    {
+        title: 'Animal Management',
+        icon: <Pets />,
+        children: [{ title: 'Animal Catalog', path: '/admin/animal-catalogs', icon: <Pets /> }],
     },
     {
         title: 'User Management',

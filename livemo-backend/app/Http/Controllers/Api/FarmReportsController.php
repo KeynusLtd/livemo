@@ -8,67 +8,93 @@ use App\Models\HealthRecord;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class FarmReportsController extends Controller
 {
     protected function assertFarmOwner(Request $request, Farm $farm): void
     {
-        if ($farm->user_id !== $request->user()->id) {
+        $user = $request->user();
+        if (!$user) {
+            abort(401, 'Unauthenticated.');
+        }
+
+        if ($farm->user_id !== $user->id) {
             abort(403);
         }
     }
 
     public function health(Request $request, Farm $farm): JsonResponse
     {
-        $this->assertFarmOwner($request, $farm);
+        try {
+            $this->assertFarmOwner($request, $farm);
 
-        $validated = $request->validate([
-            'from' => 'nullable|date',
-            'to' => 'nullable|date|after_or_equal:from',
-        ]);
+            $validated = $request->validate([
+                'from' => 'nullable|date',
+                'to' => 'nullable|date|after_or_equal:from',
+            ]);
 
-        $from = $validated['from'] ?? now()->subDays(30)->toDateString();
-        $to = $validated['to'] ?? now()->toDateString();
+            $from = $validated['from'] ?? now()->subDays(30)->toDateString();
+            $to = $validated['to'] ?? now()->toDateString();
 
-        $recordsQuery = HealthRecord::query()
-            ->whereBetween('created_at', [$from, $to])
-            ->whereHas('animal', function ($q) use ($farm) {
-                $q->where('farm_id', $farm->id);
-            });
+            $recordsQuery = HealthRecord::query()
+                ->whereBetween('health_records.created_at', [$from, $to])
+                ->whereHas('animal', function ($q) use ($farm) {
+                    $q->where('farm_id', $farm->id);
+                });
 
-        $totalRecords = (clone $recordsQuery)->count();
-        $bySeverity = (clone $recordsQuery)
-            ->selectRaw('severity, count(*) as count')
-            ->groupBy('severity')
-            ->pluck('count', 'severity');
+            $totalRecords = (clone $recordsQuery)->count();
+            $bySeverity = (clone $recordsQuery)
+                ->selectRaw('severity, count(*) as count')
+                ->groupBy('severity')
+                ->pluck('count', 'severity');
 
-        $byType = $recordsQuery
-            ->join('animals', 'animals.id', '=', 'health_records.animal_id')
-            ->selectRaw('animals.type as type, count(*) as count')
-            ->groupBy('animals.type')
-            ->pluck('count', 'type');
+            $byType = $recordsQuery
+                ->join('animals', 'animals.id', '=', 'health_records.animal_id')
+                ->selectRaw('animals.type as type, count(*) as count')
+                ->groupBy('animals.type')
+                ->pluck('count', 'type');
 
-        $latestCritical = HealthRecord::query()
-            ->with('animal')
-            ->whereHas('animal', function ($q) use ($farm) {
-                $q->where('farm_id', $farm->id);
-            })
-            ->where('severity', 'critical')
-            ->latest()
-            ->limit(20)
-            ->get();
+            $latestCritical = HealthRecord::query()
+                ->with('animal')
+                ->whereHas('animal', function ($q) use ($farm) {
+                    $q->where('farm_id', $farm->id);
+                })
+                ->where('severity', 'critical')
+                ->latest()
+                ->limit(20)
+                ->get();
 
-        return response()->json([
-            'generated_at' => now(),
-            'farm_id' => $farm->id,
-            'range' => ['from' => $from, 'to' => $to],
-            'summary' => [
-                'total_records' => (int) $totalRecords,
-                'by_severity' => $bySeverity,
-                'by_animal_type' => $byType,
-            ],
-            'latest_critical' => $latestCritical,
-        ]);
+            return response()->json([
+                'generated_at' => now(),
+                'farm_id' => $farm->id,
+                'range' => ['from' => $from, 'to' => $to],
+                'summary' => [
+                    'total_records' => (int) $totalRecords,
+                    'by_severity' => $bySeverity,
+                    'by_animal_type' => $byType,
+                ],
+                'latest_critical' => $latestCritical,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Farm health report failed', [
+                'message' => $e->getMessage(),
+                'farm_id' => $farm->id,
+                'user_id' => optional($request->user())->id,
+            ]);
+
+            $payload = [
+                'message' => 'Unable to load health report',
+            ];
+
+            if (config('app.debug')) {
+                $payload['exception'] = $e->getMessage();
+                $payload['file'] = $e->getFile();
+                $payload['line'] = $e->getLine();
+            }
+
+            return response()->json($payload, 500);
+        }
     }
 
     public function operations(Request $request, Farm $farm): JsonResponse

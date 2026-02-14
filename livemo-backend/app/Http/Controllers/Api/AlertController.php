@@ -9,12 +9,18 @@ use App\Models\Farm;
 use App\Events\AlertUpdated;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class AlertController extends Controller
 {
     protected function userFarmIds(Request $request)
     {
-        return Farm::where('user_id', $request->user()->id)->pluck('id');
+        $user = $request->user();
+        if (!$user) {
+            abort(401, 'Unauthenticated.');
+        }
+
+        return Farm::where('user_id', $user->id)->pluck('id');
     }
 
     public function index(Request $request): JsonResponse
@@ -32,6 +38,10 @@ class AlertController extends Controller
 
         if ($request->has('severity')) {
             $query->where('severity', $request->severity);
+        }
+
+        if ($request->has('animal_id')) {
+            $query->where('animal_id', $request->animal_id);
         }
 
         $alerts = $query->latest()->paginate(20);
@@ -100,23 +110,59 @@ class AlertController extends Controller
 
     public function stats(Request $request): JsonResponse
     {
-        $farmId = $request->get('farm_id');
+        $version = 'alerts-stats-2026-02-11-v1';
+        try {
+            $farmId = $request->get('farm_id');
 
-        $farmIds = $this->userFarmIds($request);
-        $query = Alert::query()->whereIn('farm_id', $farmIds);
-        if ($farmId) {
-            $query->where('farm_id', $farmId);
+            $farmIds = $this->userFarmIds($request);
+
+            if ($farmIds->isEmpty()) {
+                return response()->json([
+                    'total' => 0,
+                    'pending' => 0,
+                    'critical' => 0,
+                    'by_type' => [],
+                ]);
+            }
+
+            $query = Alert::query()->whereIn('farm_id', $farmIds);
+            if ($farmId) {
+                $query->where('farm_id', $farmId);
+            }
+
+            $stats = [
+                'total' => $query->count(),
+                'pending' => (clone $query)->where('status', 'pending')->count(),
+                'critical' => (clone $query)->where('severity', 'critical')->count(),
+                'by_type' => (clone $query)->selectRaw('type, count(*) as count')
+                    ->groupBy('type')
+                    ->pluck('count', 'type'),
+            ];
+
+            return response()->json($stats)->header('X-Alerts-Stats-Version', $version);
+        } catch (\Throwable $e) {
+            Log::error('Alert stats failed', [
+                'message' => $e->getMessage(),
+                'farm_id' => $request->get('farm_id'),
+                'user_id' => optional($request->user())->id,
+            ]);
+
+            $payload = [
+                'total' => 0,
+                'pending' => 0,
+                'critical' => 0,
+                'by_type' => [],
+            ];
+
+            if (config('app.debug')) {
+                $payload['_error'] = [
+                    'message' => $e->getMessage(),
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine(),
+                ];
+            }
+
+            return response()->json($payload)->header('X-Alerts-Stats-Version', $version);
         }
-
-        $stats = [
-            'total' => $query->count(),
-            'pending' => (clone $query)->where('status', 'pending')->count(),
-            'critical' => (clone $query)->where('severity', 'critical')->count(),
-            'by_type' => (clone $query)->selectRaw('type, count(*) as count')
-                ->groupBy('type')
-                ->pluck('count', 'type'),
-        ];
-
-        return response()->json($stats);
     }
 }

@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\AlertController;
 use App\Http\Controllers\Api\AlertActionController;
 use App\Http\Controllers\Api\AnimalController;
+use App\Http\Controllers\Api\AnimalCatalogController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BreedingRecordController;
 use App\Http\Controllers\Api\FeedScheduleController;
@@ -13,6 +14,7 @@ use App\Http\Controllers\Api\HealthController;
 use App\Http\Controllers\Api\PastureController;
 use App\Http\Controllers\Api\SensorController;
 use App\Http\Controllers\Api\SensorReadingController;
+use App\Http\Controllers\Api\VaccinationController;
 use App\Http\Controllers\Api\FarmListingController;
 use App\Http\Controllers\Api\FarmOrderController;
 use App\Http\Controllers\Api\FarmExportController;
@@ -30,6 +32,7 @@ use App\Http\Controllers\Api\AdminAnnouncementController;
 use App\Http\Controllers\Api\AdminContentPageController;
 use App\Http\Controllers\Api\AdminFooterContentController;
 use App\Http\Controllers\Api\AdminFinanceController;
+use App\Http\Controllers\Api\AdminAnimalCatalogController;
 use App\Http\Controllers\Api\Marketplace\SellerInsightsController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -132,9 +135,19 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::delete('/farms/{farm}/products/{product}', [FarmProductController::class, 'destroy']);
 
     // Animals
+    Route::get('/animal-catalogs/types', [AnimalCatalogController::class, 'types']);
+    Route::get('/animal-catalogs', [AnimalCatalogController::class, 'index']);
+    Route::get('/animal-catalogs/{animalCatalog}', [AnimalCatalogController::class, 'show']);
     Route::apiResource('animals', AnimalController::class);
     Route::get('/animals/{animal}/health', [AnimalController::class, 'health']);
     Route::get('/animals/{animal}/timeline', [AnimalController::class, 'timeline']);
+    Route::get('/animals/{animal}/breeding-records', [AnimalController::class, 'breedingRecords']);
+
+    // Vaccinations (animal-scoped + CRUD)
+    Route::get('/animals/{animal}/vaccinations', [VaccinationController::class, 'index']);
+    Route::post('/animals/{animal}/vaccinations', [VaccinationController::class, 'store']);
+    Route::put('/vaccinations/{vaccination}', [VaccinationController::class, 'update']);
+    Route::delete('/vaccinations/{vaccination}', [VaccinationController::class, 'destroy']);
 
     // Health Records
     Route::apiResource('health-records', HealthController::class);
@@ -147,12 +160,12 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
 
     // Alerts
     Route::get('/alerts', [AlertController::class, 'index']);
-    Route::get('/alerts/{alert}', [AlertController::class, 'show']);
+    Route::get('/alerts/stats', [AlertController::class, 'stats']);
+    Route::get('/alerts/{alert}', [AlertController::class, 'show'])->whereNumber('alert');
     Route::get('/alerts/{alert}/actions', [AlertActionController::class, 'index']);
     Route::post('/alerts/{alert}/actions', [AlertActionController::class, 'store']);
     Route::put('/alerts/{alert}/acknowledge', [AlertController::class, 'acknowledge']);
     Route::put('/alerts/{alert}/resolve', [AlertController::class, 'resolve']);
-    Route::get('/alerts/stats', [AlertController::class, 'stats']);
 
     // Marketplace Seller Insights (seller cockpit)
     Route::get('/marketplace/seller/insights/summary', [SellerInsightsController::class, 'summary']);
@@ -161,10 +174,13 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     // Admin Routes
     Route::prefix('admin')->middleware('admin')->group(function () {
         Route::get('/stats', [AdminController::class, 'stats']);
+        Route::get('/analytics/user-growth', [AdminController::class, 'userGrowth']);
+        Route::get('/analytics/marketplace-activity', [AdminController::class, 'marketplaceActivity']);
         Route::get('/users', [AdminController::class, 'users']);
         Route::put('/users/{id}/status', [AdminController::class, 'updateUserStatus']);
         Route::get('/listings', [AdminController::class, 'listings']);
         Route::put('/listings/{id}/status', [AdminController::class, 'updateListingStatus']);
+        Route::get('/transactions/export/csv', [AdminController::class, 'exportTransactionsCsv']);
         Route::get('/transactions', [AdminController::class, 'transactions']);
         Route::get('/settings', [AdminController::class, 'settings']);
         Route::put('/settings', [AdminController::class, 'updateSettings']);
@@ -174,6 +190,12 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
         Route::post('/categories', [AdminCategoryController::class, 'store']);
         Route::put('/categories/{id}', [AdminCategoryController::class, 'update']);
         Route::delete('/categories/{id}', [AdminCategoryController::class, 'destroy']);
+
+        // Animal Catalogs
+        Route::get('/animal-catalogs', [AdminAnimalCatalogController::class, 'index']);
+        Route::post('/animal-catalogs', [AdminAnimalCatalogController::class, 'store']);
+        Route::put('/animal-catalogs/{animalCatalog}', [AdminAnimalCatalogController::class, 'update']);
+        Route::delete('/animal-catalogs/{animalCatalog}', [AdminAnimalCatalogController::class, 'destroy']);
 
         // Payouts
         Route::get('/payouts', [AdminPayoutController::class, 'index']);
