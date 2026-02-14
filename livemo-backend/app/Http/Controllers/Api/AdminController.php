@@ -31,6 +31,72 @@ class AdminController extends Controller
     }
 
     /**
+     * User growth time-series.
+     */
+    public function userGrowth(Request $request)
+    {
+        $validated = $request->validate([
+            'days' => 'nullable|integer|min:7|max:365',
+        ]);
+
+        $days = (int) ($validated['days'] ?? 30);
+
+        $rows = User::query()
+            ->selectRaw('date(created_at) as day, count(*) as count')
+            ->where('created_at', '>=', now()->subDays($days))
+            ->groupBy(DB::raw('date(created_at)'))
+            ->orderBy(DB::raw('date(created_at)'))
+            ->get();
+
+        return response()->json([
+            'days' => $days,
+            'points' => $rows,
+        ]);
+    }
+
+    /**
+     * Marketplace activity time-series.
+     */
+    public function marketplaceActivity(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'days' => 'nullable|integer|min:7|max:365',
+            ]);
+
+            $days = (int) ($validated['days'] ?? 30);
+            $from = now()->subDays($days);
+
+            $listings = DB::table('listings')
+                ->selectRaw('date(created_at) as day, count(*) as listings_created')
+                ->where('created_at', '>=', $from)
+                ->groupBy(DB::raw('date(created_at)'))
+                ->orderBy(DB::raw('date(created_at)'))
+                ->get();
+
+            $orders = DB::table('orders')
+                ->selectRaw('date(created_at) as day, count(*) as orders_completed, sum(total) as revenue')
+                ->where('payment_status', 'completed')
+                ->where('created_at', '>=', $from)
+                ->groupBy(DB::raw('date(created_at)'))
+                ->orderBy(DB::raw('date(created_at)'))
+                ->get();
+
+            return response()->json([
+                'days' => $days,
+                'listings' => $listings,
+                'orders' => $orders,
+            ]);
+        } catch (\Throwable $e) {
+            report($e);
+            return response()->json([
+                'message' => 'Failed to compute marketplace activity: ' . $e->getMessage(),
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
      * Get all users.
      */
     public function users(Request $request)
@@ -161,6 +227,72 @@ class AdminController extends Controller
         $transactions = $query->latest()->paginate(20);
 
         return response()->json($transactions);
+    }
+
+    /**
+     * Export transactions as CSV.
+     */
+    public function exportTransactionsCsv(Request $request)
+    {
+        $validated = $request->validate([
+            'from' => 'nullable|date',
+            'to' => 'nullable|date|after_or_equal:from',
+        ]);
+
+        $from = $validated['from'] ?? now()->subDays(30)->toDateString();
+        $to = $validated['to'] ?? now()->toDateString();
+
+        $commissionRateRow = \App\Models\PlatformSetting::where('key', 'commission_rate')->first();
+        $commissionRate = $commissionRateRow ? (float) $commissionRateRow->value : 0.05;
+
+        $filename = 'transactions_' . $from . '_to_' . $to . '.csv';
+
+        $callback = function () use ($from, $to, $commissionRate) {
+            $out = fopen('php://output', 'w');
+
+            fputcsv($out, [
+                'order_id',
+                'created_at',
+                'status',
+                'payment_status',
+                'currency',
+                'total',
+                'commission_rate',
+                'estimated_commission',
+                'buyer_email',
+                'seller_email',
+            ]);
+
+            Order::query()
+                ->with(['buyer:id,email', 'seller:id,email'])
+                ->whereBetween('created_at', [$from, $to])
+                ->orderByDesc('id')
+                ->chunk(500, function ($orders) use ($out, $commissionRate) {
+                    foreach ($orders as $order) {
+                        $total = (float) $order->total;
+                        $commission = $order->payment_status === 'completed' ? ($total * $commissionRate) : 0.0;
+
+                        fputcsv($out, [
+                            $order->id,
+                            optional($order->created_at)->toDateTimeString(),
+                            $order->status,
+                            $order->payment_status,
+                            $order->currency,
+                            number_format($total, 2, '.', ''),
+                            $commissionRate,
+                            number_format($commission, 2, '.', ''),
+                            optional($order->buyer)->email,
+                            optional($order->seller)->email,
+                        ]);
+                    }
+                });
+
+            fclose($out);
+        };
+
+        return response()->streamDownload($callback, $filename, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
     }
 
     /**

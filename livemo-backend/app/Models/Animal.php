@@ -14,6 +14,7 @@ class Animal extends Model
 
     protected $fillable = [
         'farm_id',
+        'catalog_id',
         'tag_id',
         'name',
         'type',
@@ -43,6 +44,11 @@ class Animal extends Model
     public function farm(): BelongsTo
     {
         return $this->belongsTo(Farm::class);
+    }
+
+    public function catalog(): BelongsTo
+    {
+        return $this->belongsTo(AnimalCatalog::class, 'catalog_id');
     }
 
     /**

@@ -60,3 +60,30 @@ export async function completeFeedSchedule(params: { farmId: number; feedSchedul
     { method: "POST" }
   );
 }
+
+export async function updateFeedSchedule(params: {
+  farmId: number;
+  feedScheduleId: number;
+  payload: Partial<{
+    animal_id?: number | null;
+    group_name?: string | null;
+    feed_type: string;
+    quantity: number;
+    scheduled_time: string;
+    days_of_week?: number[] | null;
+    is_recurring?: boolean;
+    notes?: string | null;
+    is_completed?: boolean;
+  }>;
+}) {
+  return apiFetch<{ message: string; feed_schedule: FeedSchedule }>(
+    `/farms/${params.farmId}/feed-schedules/${params.feedScheduleId}`,
+    { method: "PUT", body: jsonBody(params.payload) }
+  );
+}
+
+export async function deleteFeedSchedule(params: { farmId: number; feedScheduleId: number }) {
+  return apiFetch<{ message: string }>(`/farms/${params.farmId}/feed-schedules/${params.feedScheduleId}`,
+    { method: "DELETE" }
+  );
+}

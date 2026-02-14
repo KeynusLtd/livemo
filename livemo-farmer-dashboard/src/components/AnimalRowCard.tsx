@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { Animal } from "@/lib/animalApi";
+import { useNavigate } from "react-router-dom";
 
 function statusLabel(status: Animal["status"]) {
   switch (status) {
@@ -38,6 +39,7 @@ function statusClassName(status: Animal["status"]) {
 
 export function AnimalRowCard({ animal }: { animal: Animal }) {
   const name = animal.name && animal.name.trim().length > 0 ? animal.name : "Unnamed";
+  const navigate = useNavigate();
 
   return (
     <Card className="shadow-md hover:shadow-lg transition-shadow">
@@ -57,7 +59,12 @@ export function AnimalRowCard({ animal }: { animal: Animal }) {
           <span className="text-muted-foreground">Health score</span>
           <span className="font-medium">{animal.health_score ?? "—"}</span>
         </div>
-        <Button variant="outline" size="sm" className="w-full">
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full"
+          onClick={() => navigate(`/animals/${animal.id}`)}
+        >
           View Details
         </Button>
       </CardContent>

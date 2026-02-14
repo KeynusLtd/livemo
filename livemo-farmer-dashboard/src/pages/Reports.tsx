@@ -13,11 +13,83 @@ import { Download, FileText } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useActiveFarm } from "@/hooks/useActiveFarm";
-import { getFinancialReport, getHealthReport, getOperationsReport } from "@/lib/reportsApi";
+import {
+  exportFinancialReport,
+  exportHealthReport,
+  exportOperationsReport,
+  getFinancialReport,
+  getHealthReport,
+  getOperationsReport,
+} from "@/lib/reportsApi";
+import type { ExportFormat } from "@/lib/reportsApi";
+
+function downloadJson(filename: string, payload: unknown) {
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function guessFilename(res: Response, fallback: string) {
+  const disp = res.headers.get("content-disposition") ?? "";
+  const m = disp.match(/filename="?([^";]+)"?/i);
+  return m?.[1] ?? fallback;
+}
+
+async function downloadResponse(res: Response, fallbackFilename: string) {
+  const blob = await res.blob();
+  const filename = guessFilename(res, fallbackFilename);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+type ExportHistoryItem = {
+  id: string;
+  farmId: number;
+  reportId: string;
+  reportName: string;
+  format: ExportFormat;
+  createdAt: string;
+};
+
+const EXPORT_HISTORY_KEY = "livemo.reports.exportHistory.v1";
+
+function loadExportHistory(): ExportHistoryItem[] {
+  try {
+    const raw = localStorage.getItem(EXPORT_HISTORY_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as ExportHistoryItem[];
+    if (!Array.isArray(parsed)) return [];
+    return parsed;
+  } catch {
+    return [];
+  }
+}
+
+function saveExportHistory(items: ExportHistoryItem[]) {
+  try {
+    localStorage.setItem(EXPORT_HISTORY_KEY, JSON.stringify(items.slice(0, 50)));
+  } catch {
+    // ignore
+  }
+}
 
 export default function Reports() {
   const { activeFarmId } = useActiveFarm();
   const [period, setPeriod] = useState("30d");
+  const [exportFormat, setExportFormat] = useState<ExportFormat>("json");
+  const [exportHistory, setExportHistory] = useState<ExportHistoryItem[]>(() => loadExportHistory());
 
   const days = useMemo(() => {
     if (period === "7d") return 7;
@@ -46,7 +118,6 @@ export default function Reports() {
     staleTime: 30_000,
   });
 
-  const exportsCount = 0;
   const healthScore = useMemo(() => {
     const total = healthReportQuery.data?.summary.total_records ?? 0;
     if (total === 0) return 0;
@@ -81,6 +152,101 @@ export default function Reports() {
     [activeFarmId, days]
   );
 
+  const canExport = activeFarmId != null;
+
+  const exportReport = async (reportId: string) => {
+    if (!canExport || activeFarmId == null) return;
+
+    const dateTag = new Date().toISOString().slice(0, 10);
+
+    const reportMeta = reports.find((r) => r.id === reportId);
+    const reportName = reportMeta?.name ?? reportId;
+
+    if (reportId === "REP-HEALTH") {
+      if (exportFormat === "json") {
+        if (!healthReportQuery.data) return;
+        downloadJson(`health-report-farm-${activeFarmId}-${dateTag}.json`, healthReportQuery.data);
+      } else {
+        const res = await exportHealthReport({ farmId: activeFarmId, format: exportFormat });
+        await downloadResponse(res, `health-report-farm-${activeFarmId}-${dateTag}.${exportFormat}`);
+      }
+
+      const next: ExportHistoryItem[] = [
+        {
+          id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+          farmId: activeFarmId,
+          reportId,
+          reportName,
+          format: exportFormat,
+          createdAt: new Date().toISOString(),
+        },
+        ...exportHistory,
+      ];
+      setExportHistory(next);
+      saveExportHistory(next);
+      return;
+    }
+
+    if (reportId === "REP-OPS") {
+      if (exportFormat === "json") {
+        if (!opsReportQuery.data) return;
+        downloadJson(`operations-report-farm-${activeFarmId}-${dateTag}.json`, opsReportQuery.data);
+      } else {
+        const res = await exportOperationsReport({ farmId: activeFarmId, days, format: exportFormat });
+        await downloadResponse(res, `operations-report-farm-${activeFarmId}-${dateTag}.${exportFormat}`);
+      }
+
+      const next: ExportHistoryItem[] = [
+        {
+          id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+          farmId: activeFarmId,
+          reportId,
+          reportName,
+          format: exportFormat,
+          createdAt: new Date().toISOString(),
+        },
+        ...exportHistory,
+      ];
+      setExportHistory(next);
+      saveExportHistory(next);
+      return;
+    }
+
+    if (reportId === "REP-FIN") {
+      if (exportFormat === "json") {
+        if (!finReportQuery.data) return;
+        downloadJson(`financial-report-farm-${activeFarmId}-${dateTag}.json`, finReportQuery.data);
+      } else {
+        const res = await exportFinancialReport({ farmId: activeFarmId, format: exportFormat });
+        await downloadResponse(res, `financial-report-farm-${activeFarmId}-${dateTag}.${exportFormat}`);
+      }
+
+      const next: ExportHistoryItem[] = [
+        {
+          id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+          farmId: activeFarmId,
+          reportId,
+          reportName,
+          format: exportFormat,
+          createdAt: new Date().toISOString(),
+        },
+        ...exportHistory,
+      ];
+      setExportHistory(next);
+      saveExportHistory(next);
+    }
+  };
+
+  const exportCountForFarm = useMemo(() => {
+    if (activeFarmId == null) return 0;
+    return exportHistory.filter((h) => h.farmId === activeFarmId).length;
+  }, [activeFarmId, exportHistory]);
+
+  const recentExportsForFarm = useMemo(() => {
+    if (activeFarmId == null) return [];
+    return exportHistory.filter((h) => h.farmId === activeFarmId).slice(0, 5);
+  }, [activeFarmId, exportHistory]);
+
   return (
     <Layout>
       <div className="space-y-6">
@@ -97,7 +263,7 @@ export default function Reports() {
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <p className="text-sm font-medium text-muted-foreground">Exports</p>
-                  <h3 className="mt-2 text-3xl font-bold text-foreground">{exportsCount}</h3>
+                  <h3 className="mt-2 text-3xl font-bold text-foreground">{exportCountForFarm}</h3>
                   <p className="mt-2 text-sm text-muted-foreground">Last {days} days</p>
                 </div>
                 <div className="rounded-lg bg-gradient-earth p-3 text-white">
@@ -157,7 +323,27 @@ export default function Reports() {
                     <SelectItem value="ytd">Year to date</SelectItem>
                   </SelectContent>
                 </Select>
-                <Button className="bg-gradient-earth text-white shadow-md hover:opacity-90">
+
+                <Select value={exportFormat} onValueChange={(v) => setExportFormat(v as ExportFormat)}>
+                  <SelectTrigger className="w-full md:w-36">
+                    <SelectValue placeholder="Export" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="json">JSON</SelectItem>
+                    <SelectItem value="csv">CSV</SelectItem>
+                    <SelectItem value="pdf">PDF</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <Button
+                  className="bg-gradient-earth text-white shadow-md hover:opacity-90"
+                  onClick={() => {
+                    healthReportQuery.refetch();
+                    opsReportQuery.refetch();
+                    finReportQuery.refetch();
+                  }}
+                  disabled={activeFarmId == null}
+                >
                   Generate
                 </Button>
               </div>
@@ -193,11 +379,36 @@ export default function Reports() {
                       >
                         {r.status}
                       </Badge>
-                      <Button variant="outline" size="sm">
+                      <Button variant="outline" size="sm" onClick={() => void exportReport(r.id)} disabled={!canExport}>
                         <Download className="mr-2 h-4 w-4" />
                         Export
                       </Button>
                     </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-md">
+          <CardHeader>
+            <CardTitle>Recent exports</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {activeFarmId == null ? (
+              <div className="text-sm text-muted-foreground">Select a farm to view export history.</div>
+            ) : recentExportsForFarm.length === 0 ? (
+              <div className="text-sm text-muted-foreground">No exports yet.</div>
+            ) : (
+              <div className="space-y-3">
+                {recentExportsForFarm.map((e) => (
+                  <div key={e.id} className="flex flex-col gap-1 rounded-lg border border-border p-4 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <div className="font-medium">{e.reportName}</div>
+                      <div className="text-sm text-muted-foreground">{new Date(e.createdAt).toLocaleString()}</div>
+                    </div>
+                    <Badge className="bg-muted text-foreground">{e.format}</Badge>
                   </div>
                 ))}
               </div>

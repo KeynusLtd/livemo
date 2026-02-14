@@ -1,4 +1,4 @@
-import { apiFetch } from "@/lib/apiClient";
+import { apiFetch, apiFetchRaw } from "@/lib/apiClient";
 
 export type HealthReport = {
   generated_at: string;
@@ -57,4 +57,42 @@ export async function getFinancialReport(params: { farmId: number; from?: string
   if (params.to) qs.set("to", params.to);
   const suffix = qs.toString().length > 0 ? `?${qs.toString()}` : "";
   return apiFetch<FinancialReport>(`/farms/${params.farmId}/reports/financial${suffix}`, { method: "GET" });
+}
+
+export type ExportFormat = "json" | "csv" | "pdf";
+
+export async function exportHealthReport(params: {
+  farmId: number;
+  from?: string;
+  to?: string;
+  format: ExportFormat;
+}) {
+  const qs = new URLSearchParams();
+  if (params.from) qs.set("from", params.from);
+  if (params.to) qs.set("to", params.to);
+  qs.set("format", params.format);
+  const suffix = `?${qs.toString()}`;
+  return apiFetchRaw(`/farms/${params.farmId}/export/health${suffix}`, { method: "GET" });
+}
+
+export async function exportOperationsReport(params: { farmId: number; days?: number; format: ExportFormat }) {
+  const qs = new URLSearchParams();
+  if (params.days) qs.set("days", String(params.days));
+  qs.set("format", params.format);
+  const suffix = `?${qs.toString()}`;
+  return apiFetchRaw(`/farms/${params.farmId}/export/operations${suffix}`, { method: "GET" });
+}
+
+export async function exportFinancialReport(params: {
+  farmId: number;
+  from?: string;
+  to?: string;
+  format: ExportFormat;
+}) {
+  const qs = new URLSearchParams();
+  if (params.from) qs.set("from", params.from);
+  if (params.to) qs.set("to", params.to);
+  qs.set("format", params.format);
+  const suffix = `?${qs.toString()}`;
+  return apiFetchRaw(`/farms/${params.farmId}/export/financial${suffix}`, { method: "GET" });
 }

@@ -98,7 +98,7 @@ const ListingsPage = () => {
     const [success, setSuccess] = useState<string | null>(null);
 
     const [search, setSearch] = useState('');
-    const [statusFilter, setStatusFilter] = useState('pending_review');
+    const [statusFilter, setStatusFilter] = useState('all');
     const [typeFilter, setTypeFilter] = useState('all');
 
     const [actionLoading, setActionLoading] = useState<number | null>(null);

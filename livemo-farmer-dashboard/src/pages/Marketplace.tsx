@@ -13,14 +13,27 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MessageSquare, Plus, ShoppingCart, Store, TrendingUp } from "lucide-react";
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useActiveFarm } from "@/hooks/useActiveFarm";
+import { useToast } from "@/hooks/use-toast";
 import {
   getFarmEarnings,
   listFarmListings,
   listFarmOrders,
+  createFarmListing,
 } from "@/lib/marketplaceApi";
 import type { Listing, Order } from "@/lib/marketplaceApi";
+import { listAnimals } from "@/lib/animalApi";
+import type { Animal } from "@/lib/animalApi";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 
 function formatMoney(amount: number, currency: string) {
   try {
@@ -35,10 +48,29 @@ function formatMoney(amount: number, currency: string) {
 }
 
 export default function Marketplace() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
   const { activeFarmId } = useActiveFarm();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
   const [ordersPage, setOrdersPage] = useState(1);
+
+  const [newListingOpen, setNewListingOpen] = useState(false);
+  const [newListingType, setNewListingType] = useState<"livestock" | "product">("livestock");
+  const [newListingAnimalId, setNewListingAnimalId] = useState<number | null>(null);
+  const [newListingTitle, setNewListingTitle] = useState("");
+  const [newListingDescription, setNewListingDescription] = useState("");
+  const [newListingPrice, setNewListingPrice] = useState<string>("");
+  const [newListingCurrency, setNewListingCurrency] = useState("USD");
+
+  const animalsQuery = useQuery({
+    queryKey: ["marketplaceAnimals", activeFarmId],
+    queryFn: () => listAnimals({ farm_id: activeFarmId ?? undefined, page: 1 }),
+    enabled: activeFarmId != null,
+    staleTime: 10_000,
+  });
+
+  const animals: Animal[] = useMemo(() => animalsQuery.data?.data ?? [], [animalsQuery.data?.data]);
 
   const listingsQuery = useQuery({
     queryKey: ["farmListings", activeFarmId, category],
@@ -66,6 +98,52 @@ export default function Marketplace() {
     staleTime: 30_000,
   });
 
+  const createListingMutation = useMutation({
+    mutationFn: async () => {
+      if (activeFarmId == null) throw new Error("Select a farm first.");
+      if (newListingType !== "livestock") throw new Error("Only livestock listings are supported here for now.");
+      if (newListingAnimalId == null) throw new Error("Select an animal.");
+
+      const price = Number(newListingPrice);
+      if (!Number.isFinite(price) || price < 0) throw new Error("Enter a valid price.");
+      const title = newListingTitle.trim();
+      const description = newListingDescription.trim();
+      if (title.length === 0) throw new Error("Title is required.");
+      if (description.length === 0) throw new Error("Description is required.");
+
+      return createFarmListing({
+        farmId: activeFarmId,
+        payload: {
+          type: "livestock",
+          animal_id: newListingAnimalId,
+          title,
+          description,
+          price,
+          currency: newListingCurrency,
+        },
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["farmListings"] });
+      queryClient.invalidateQueries({ queryKey: ["farmEarnings"] });
+      toast({ title: "Listing created" });
+      setNewListingOpen(false);
+      setNewListingAnimalId(null);
+      setNewListingTitle("");
+      setNewListingDescription("");
+      setNewListingPrice("");
+      setNewListingCurrency("USD");
+      setNewListingType("livestock");
+    },
+    onError: (err: unknown) => {
+      toast({
+        variant: "destructive",
+        title: "Failed",
+        description: err instanceof Error ? err.message : "Failed to create listing",
+      });
+    },
+  });
+
   const listings: Listing[] = useMemo(() => listingsQuery.data?.data ?? [], [listingsQuery.data?.data]);
   const orders: Order[] = ordersQuery.data?.data ?? [];
   const earnings = earningsQuery.data;
@@ -81,6 +159,111 @@ export default function Marketplace() {
   return (
     <Layout>
       <div className="space-y-6">
+        <Dialog
+          open={newListingOpen}
+          onOpenChange={(v) => {
+            setNewListingOpen(v);
+            if (!v) {
+              setNewListingAnimalId(null);
+              setNewListingTitle("");
+              setNewListingDescription("");
+              setNewListingPrice("");
+              setNewListingCurrency("USD");
+              setNewListingType("livestock");
+            }
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>New listing</DialogTitle>
+              <DialogDescription>Create a new listing for your farm marketplace.</DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <div className="text-sm font-medium">Type</div>
+                <Select value={newListingType} onValueChange={(v) => setNewListingType(v as "livestock" | "product")}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="livestock">Livestock</SelectItem>
+                    <SelectItem value="product">Product</SelectItem>
+                  </SelectContent>
+                </Select>
+                {newListingType === "product" && (
+                  <div className="text-xs text-muted-foreground">
+                    Product listings UI will be added next.
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-sm font-medium">Animal</div>
+                <Select
+                  value={newListingAnimalId != null ? String(newListingAnimalId) : ""}
+                  onValueChange={(v) => setNewListingAnimalId(v ? Number(v) : null)}
+                  disabled={newListingType !== "livestock" || activeFarmId == null || animalsQuery.isLoading}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={animalsQuery.isLoading ? "Loading animals..." : "Select animal"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {animals.map((a) => (
+                      <SelectItem key={a.id} value={String(a.id)}>
+                        {(a.name && a.name.trim().length > 0 ? a.name : "Unnamed") + " • " + a.tag_id}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-sm font-medium">Title</div>
+                <Input value={newListingTitle} onChange={(e) => setNewListingTitle(e.target.value)} placeholder="Listing title" />
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-sm font-medium">Description</div>
+                <Textarea
+                  value={newListingDescription}
+                  onChange={(e) => setNewListingDescription(e.target.value)}
+                  placeholder="Describe the listing..."
+                />
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                <div className="space-y-2 md:col-span-2">
+                  <div className="text-sm font-medium">Price</div>
+                  <Input
+                    inputMode="decimal"
+                    value={newListingPrice}
+                    onChange={(e) => setNewListingPrice(e.target.value)}
+                    placeholder="0.00"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <div className="text-sm font-medium">Currency</div>
+                  <Input value={newListingCurrency} onChange={(e) => setNewListingCurrency(e.target.value.toUpperCase())} />
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setNewListingOpen(false)} disabled={createListingMutation.isPending}>
+                Cancel
+              </Button>
+              <Button
+                className="bg-gradient-earth text-white hover:opacity-90"
+                onClick={() => createListingMutation.mutate()}
+                disabled={createListingMutation.isPending || activeFarmId == null}
+              >
+                Create
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-3xl font-bold text-foreground">Marketplace</h1>
@@ -88,7 +271,11 @@ export default function Marketplace() {
               Manage listings, communicate with buyers, and track orders & earnings
             </p>
           </div>
-          <Button className="bg-gradient-earth text-white shadow-md hover:opacity-90">
+          <Button
+            className="bg-gradient-earth text-white shadow-md hover:opacity-90"
+            onClick={() => setNewListingOpen(true)}
+            disabled={activeFarmId == null}
+          >
             <Plus className="mr-2 h-4 w-4" />
             New Listing
           </Button>

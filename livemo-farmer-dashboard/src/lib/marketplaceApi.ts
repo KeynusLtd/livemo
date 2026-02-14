@@ -1,4 +1,4 @@
-import { apiFetch } from "@/lib/apiClient";
+import { apiFetch, jsonBody } from "@/lib/apiClient";
 import type { LaravelPaginator } from "@/lib/farmApi";
 
 export type Listing = {
@@ -32,6 +32,44 @@ export type Earnings = {
   orders_by_payment_status: Record<string, number>;
 };
 
+export type CreateFarmListingPayload =
+  | {
+      type: "livestock";
+      title: string;
+      description: string;
+      price: number;
+      currency?: string;
+      animal_id: number;
+      location?: string;
+      delivery_available?: boolean;
+      delivery_fee?: number;
+      max_delivery_distance_km?: number;
+      tags?: string[];
+      expires_at?: string;
+    }
+  | {
+      type: "product";
+      title: string;
+      description: string;
+      price: number;
+      currency?: string;
+      sku: string;
+      category_id: number;
+      stock_quantity: number;
+      weight?: number;
+      brand?: string;
+      manufacturer?: string;
+      specifications?: unknown;
+      requires_prescription?: boolean;
+      expiry_date?: string;
+      location?: string;
+      delivery_available?: boolean;
+      delivery_fee?: number;
+      max_delivery_distance_km?: number;
+      tags?: string[];
+      expires_at?: string;
+    };
+
 export async function listFarmListings(params: { farmId: number; page?: number; status?: string; type?: string }) {
   const qs = new URLSearchParams();
   if (params.page) qs.set("page", String(params.page));
@@ -62,6 +100,13 @@ export async function getFarmEarnings(params: { farmId: number; from?: string; t
   if (params.days) qs.set("days", String(params.days));
   const suffix = qs.toString().length > 0 ? `?${qs.toString()}` : "";
   return apiFetch<Earnings>(`/farms/${params.farmId}/earnings${suffix}`, { method: "GET" });
+}
+
+export async function createFarmListing(params: { farmId: number; payload: CreateFarmListingPayload }) {
+  return apiFetch<{ message: string; listing: Listing }>(`/farms/${params.farmId}/listings`, {
+    method: "POST",
+    body: jsonBody(params.payload),
+  });
 }
 
 export async function getSellerRevenueTrend(params: { days?: number }) {

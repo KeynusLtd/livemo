@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Support\Facades\DB;
 
 class Pasture extends Model
 {
@@ -90,6 +91,16 @@ class Pasture extends Model
      */
     public function assignAnimal(int $animalId, ?string $notes = null): void
     {
+        $alreadyAssigned = DB::table('pasture_assignments')
+            ->where('pasture_id', $this->id)
+            ->where('animal_id', $animalId)
+            ->where('is_current', true)
+            ->exists();
+
+        if ($alreadyAssigned) {
+            return;
+        }
+
         if ($this->isAtCapacity()) {
             throw new \Exception('Pasture is at full capacity');
         }

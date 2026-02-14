@@ -1,4 +1,4 @@
-import { apiRequest } from './client';
+import { API_BASE_URL, apiRequest } from './client';
 
 export type AdminStats = {
     total_users: number;
@@ -23,6 +23,19 @@ export type RefundRequest = {
     details?: string | null;
     status: 'requested' | 'approved' | 'rejected' | 'processed';
     processed_at?: string | null;
+    created_at: string;
+    updated_at?: string;
+};
+
+export type AdminAnimalCatalog = {
+    id: number;
+    name: string;
+    type: 'cattle' | 'goats' | 'sheep' | 'poultry' | 'swine' | 'horses' | 'rabbits';
+    breed?: string | null;
+    default_gender?: 'male' | 'female' | null;
+    is_active: boolean;
+    metadata?: unknown;
+    created_by?: number | null;
     created_at: string;
     updated_at?: string;
 };
@@ -116,6 +129,33 @@ export type RevenueTrend = {
     points: RevenueTrendPoint[];
 };
 
+export type UserGrowthPoint = {
+    day: string;
+    count: number;
+};
+
+export type UserGrowth = {
+    days: number;
+    points: UserGrowthPoint[];
+};
+
+export type MarketplaceActivityListingPoint = {
+    day: string;
+    listings_created: number;
+};
+
+export type MarketplaceActivityOrderPoint = {
+    day: string;
+    orders_completed: number;
+    revenue: number;
+};
+
+export type MarketplaceActivity = {
+    days: number;
+    listings: MarketplaceActivityListingPoint[];
+    orders: MarketplaceActivityOrderPoint[];
+};
+
 export type AuditLog = {
     id: number;
     action: string;
@@ -192,6 +232,14 @@ export function getAdminFinanceSummary(token: string, params?: { from?: string; 
 
 export function getAdminRevenueTrend(token: string, days = 30) {
     return apiRequest<RevenueTrend>(`/admin/finance/revenue-trend?days=${days}`, { method: 'GET', token });
+}
+
+export function getAdminUserGrowth(token: string, days = 30) {
+    return apiRequest<UserGrowth>(`/admin/analytics/user-growth?days=${days}`, { method: 'GET', token });
+}
+
+export function getAdminMarketplaceActivity(token: string, days = 30) {
+    return apiRequest<MarketplaceActivity>(`/admin/analytics/marketplace-activity?days=${days}`, { method: 'GET', token });
 }
 
 export function getAdminAuditLogs(
@@ -330,6 +378,41 @@ export function deleteAdminCategory(token: string, id: number) {
     return apiRequest<{ message: string }>(`/admin/categories/${id}`, { method: 'DELETE', token });
 }
 
+export function getAdminAnimalCatalogs(
+    token: string,
+    params: { page?: number; per_page?: number; type?: string; is_active?: string; search?: string } = {},
+) {
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+        if (value != null && value !== '' && value !== 'all') {
+            query.set(key, String(value));
+        }
+    });
+
+    const suffix = query.toString() ? `?${query.toString()}` : '';
+    return apiRequest<Paginated<AdminAnimalCatalog>>(`/admin/animal-catalogs${suffix}`, { method: 'GET', token });
+}
+
+export function createAdminAnimalCatalog(token: string, payload: Partial<AdminAnimalCatalog>) {
+    return apiRequest<{ message: string; item: AdminAnimalCatalog }>(`/admin/animal-catalogs`, {
+        method: 'POST',
+        token,
+        body: JSON.stringify(payload),
+    });
+}
+
+export function updateAdminAnimalCatalog(token: string, id: number, payload: Partial<AdminAnimalCatalog>) {
+    return apiRequest<{ message: string; item: AdminAnimalCatalog }>(`/admin/animal-catalogs/${id}`, {
+        method: 'PUT',
+        token,
+        body: JSON.stringify(payload),
+    });
+}
+
+export function deleteAdminAnimalCatalog(token: string, id: number) {
+    return apiRequest<{ message: string }>(`/admin/animal-catalogs/${id}`, { method: 'DELETE', token });
+}
+
 export function getAdminTransactions(token: string, params: { page?: number } = {}) {
     const query = new URLSearchParams();
     Object.entries(params).forEach(([key, value]) => {
@@ -339,6 +422,17 @@ export function getAdminTransactions(token: string, params: { page?: number } = 
     });
     const suffix = query.toString() ? `?${query.toString()}` : '';
     return apiRequest<Paginated<AdminOrder>>(`/admin/transactions${suffix}`, { method: 'GET', token });
+}
+
+export function buildAdminTransactionsExportCsvUrl(params: { from?: string; to?: string } = {}) {
+    const search = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+        if (value != null && value !== '') {
+            search.set(key, String(value));
+        }
+    });
+    const suffix = search.toString() ? `?${search.toString()}` : '';
+    return `${API_BASE_URL}/admin/transactions/export/csv${suffix}`;
 }
 
 export function getAdminPayouts(
@@ -393,7 +487,7 @@ export function getAdminRefunds(
 ) {
     const query = new URLSearchParams();
     Object.entries(params).forEach(([key, value]) => {
-        if (value != null && value !== '') {
+        if (value != null && String(value) !== '') {
             query.set(key, String(value));
         }
     });
@@ -419,7 +513,7 @@ export function getAdminEscrowTransactions(
 ) {
     const query = new URLSearchParams();
     Object.entries(params).forEach(([key, value]) => {
-        if (value != null && value !== '') {
+        if (value != null && String(value) !== '') {
             query.set(key, String(value));
         }
     });

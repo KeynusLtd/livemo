@@ -10,6 +10,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Check, ClipboardList, Search, ShieldAlert } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -19,6 +28,7 @@ import {
   listAlerts,
   resolveAlert,
   getAlertStats,
+  createAlertAction,
 } from "@/lib/alertApi";
 import { useToast } from "@/hooks/use-toast";
 
@@ -31,6 +41,11 @@ export default function Alerts() {
   const [severity, setSeverity] = useState("all");
   const [status, setStatus] = useState("all");
   const [page, setPage] = useState(1);
+
+  const [logActionOpen, setLogActionOpen] = useState(false);
+  const [logActionAlertId, setLogActionAlertId] = useState<number | null>(null);
+  const [actionType, setActionType] = useState("");
+  const [actionNotes, setActionNotes] = useState("");
 
   const queryParams = useMemo(
     () => ({
@@ -88,6 +103,31 @@ export default function Alerts() {
     },
   });
 
+  const logActionMutation = useMutation({
+    mutationFn: (payload: { alertId: number; action_type: string; notes?: string }) =>
+      createAlertAction({
+        alertId: payload.alertId,
+        action_type: payload.action_type,
+        notes: payload.notes,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["alerts"] });
+      queryClient.invalidateQueries({ queryKey: ["alertStats"] });
+      toast({ title: "Action logged" });
+      setLogActionOpen(false);
+      setLogActionAlertId(null);
+      setActionType("");
+      setActionNotes("");
+    },
+    onError: (err: unknown) => {
+      toast({
+        variant: "destructive",
+        title: "Failed",
+        description: err instanceof Error ? err.message : "Failed to log action",
+      });
+    },
+  });
+
   const remoteAlerts = useMemo(() => alertsQuery.data?.data ?? [], [alertsQuery.data?.data]);
   const filteredAlerts = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -112,6 +152,83 @@ export default function Alerts() {
   return (
     <Layout>
       <div className="space-y-6">
+        <Dialog
+          open={logActionOpen}
+          onOpenChange={(v) => {
+            setLogActionOpen(v);
+            if (!v) {
+              setLogActionAlertId(null);
+              setActionType("");
+              setActionNotes("");
+            }
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Log alert action</DialogTitle>
+              <DialogDescription>
+                Record what you did to respond to this alert.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <div className="text-sm font-medium">Action type</div>
+                <Select value={actionType} onValueChange={setActionType}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select action" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="checked_animal">Checked animal</SelectItem>
+                    <SelectItem value="administered_treatment">Administered treatment</SelectItem>
+                    <SelectItem value="called_vet">Called vet</SelectItem>
+                    <SelectItem value="adjusted_sensor">Adjusted sensor</SelectItem>
+                    <SelectItem value="other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-sm font-medium">Notes</div>
+                <Textarea
+                  value={actionNotes}
+                  onChange={(e) => setActionNotes(e.target.value)}
+                  placeholder="Optional details..."
+                />
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setLogActionOpen(false)}
+                disabled={logActionMutation.isPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                className="bg-gradient-earth text-white hover:opacity-90"
+                disabled={
+                  logActionMutation.isPending ||
+                  logActionAlertId == null ||
+                  actionType.trim().length === 0
+                }
+                onClick={() => {
+                  if (logActionAlertId == null) return;
+                  const notes = actionNotes.trim().length > 0 ? actionNotes.trim() : undefined;
+                  logActionMutation.mutate({
+                    alertId: logActionAlertId,
+                    action_type: actionType,
+                    notes,
+                  });
+                }}
+              >
+                Save
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-3xl font-bold text-foreground">Alerts</h1>
@@ -290,7 +407,14 @@ export default function Alerts() {
                     </div>
 
                     <div className="flex items-center justify-between gap-3 md:justify-end">
-                      <Button variant="outline" size="sm">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setLogActionAlertId(a.id);
+                          setLogActionOpen(true);
+                        }}
+                      >
                         Log Action
                       </Button>
                       {a.status === "pending" ? (

@@ -1,0 +1,33 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::table('animals', function (Blueprint $table) {
+            if (!Schema::hasColumn('animals', 'catalog_id')) {
+                $table->foreignId('catalog_id')->nullable()->after('farm_id')->constrained('animal_catalogs')->nullOnDelete();
+                $table->index('catalog_id');
+            }
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::table('animals', function (Blueprint $table) {
+            if (Schema::hasColumn('animals', 'catalog_id')) {
+                $table->dropConstrainedForeignId('catalog_id');
+            }
+        });
+    }
+};

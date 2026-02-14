@@ -74,7 +74,7 @@ class PastureController extends Controller
         $this->assertFarmOwner($request, $farm);
         $this->assertPastureInFarm($farm, $pasture);
 
-        $pasture->load(['currentAnimals']);
+        $pasture->load(['currentAnimals', 'allAnimals']);
 
         return response()->json($pasture);
     }

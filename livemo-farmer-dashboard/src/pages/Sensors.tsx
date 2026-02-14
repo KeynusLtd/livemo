@@ -3,12 +3,31 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Radio, Battery, Signal, MapPin, Plus } from "lucide-react";
 
-import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useActiveFarm } from "@/hooks/useActiveFarm";
-import { listSensors } from "@/lib/sensorApi";
+import { useToast } from "@/hooks/use-toast";
+import { listAnimals } from "@/lib/animalApi";
+import type { Animal } from "@/lib/animalApi";
+import { createSensor, listSensors, updateSensor } from "@/lib/sensorApi";
 import type { Sensor } from "@/lib/sensorApi";
 
 function minutesAgoLabel(iso?: string | null) {
@@ -29,7 +48,27 @@ function isOnline(sensor: Sensor) {
 }
 
 export default function Sensors() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
   const { activeFarmId } = useActiveFarm();
+
+  const [addOpen, setAddOpen] = useState(false);
+  const [deviceId, setDeviceId] = useState("");
+  const [sensorType, setSensorType] = useState("collar");
+  const [assignAnimalId, setAssignAnimalId] = useState<number | null>(null);
+
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [assignSensorId, setAssignSensorId] = useState<number | null>(null);
+  const [assignToAnimalId, setAssignToAnimalId] = useState<number | null>(null);
+
+  const animalsQuery = useQuery({
+    queryKey: ["sensorAnimals", activeFarmId],
+    queryFn: () => listAnimals({ farm_id: activeFarmId ?? undefined, page: 1 }),
+    enabled: activeFarmId != null,
+    staleTime: 30_000,
+  });
+
+  const animals: Animal[] = useMemo(() => animalsQuery.data?.data ?? [], [animalsQuery.data?.data]);
 
   const sensorsQuery = useQuery({
     queryKey: ["sensors", activeFarmId],
@@ -49,9 +88,203 @@ export default function Sensors() {
 
   const onlinePercent = sensors.length > 0 ? Math.round((onlineCount / sensors.length) * 100) : 0;
 
+  const createMutation = useMutation({
+    mutationFn: (payload: { device_id: string; type: string; farm_id: number; animal_id?: number }) =>
+      createSensor(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sensors"] });
+      toast({ title: "Sensor added" });
+      setAddOpen(false);
+      setDeviceId("");
+      setSensorType("collar");
+      setAssignAnimalId(null);
+    },
+    onError: (err: unknown) => {
+      toast({
+        variant: "destructive",
+        title: "Failed",
+        description: err instanceof Error ? err.message : "Failed to add sensor",
+      });
+    },
+  });
+
+  const assignMutation = useMutation({
+    mutationFn: (payload: { sensorId: number; animal_id: number | null }) =>
+      updateSensor({ sensorId: payload.sensorId, animal_id: payload.animal_id }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sensors"] });
+      toast({ title: "Sensor updated" });
+      setAssignOpen(false);
+      setAssignSensorId(null);
+      setAssignToAnimalId(null);
+    },
+    onError: (err: unknown) => {
+      toast({
+        variant: "destructive",
+        title: "Failed",
+        description: err instanceof Error ? err.message : "Failed to update sensor",
+      });
+    },
+  });
+
+  const canCreate = activeFarmId != null && deviceId.trim().length > 0 && sensorType.trim().length > 0;
+  const canAssign = assignSensorId != null;
+
+  const openAssign = (sensor: Sensor) => {
+    setAssignSensorId(sensor.id);
+    setAssignToAnimalId(sensor.animal_id ?? null);
+    setAssignOpen(true);
+  };
+
   return (
     <Layout>
       <div className="space-y-6">
+        <Dialog
+          open={addOpen}
+          onOpenChange={(v) => {
+            setAddOpen(v);
+            if (!v) {
+              setDeviceId("");
+              setSensorType("collar");
+              setAssignAnimalId(null);
+            }
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Add Sensor</DialogTitle>
+              <DialogDescription>
+                Register a sensor device and optionally assign it to an animal.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <div className="text-sm font-medium">Device ID</div>
+                <Input
+                  value={deviceId}
+                  onChange={(e) => setDeviceId(e.target.value)}
+                  placeholder="e.g. SENSOR_COW001"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-sm font-medium">Sensor type</div>
+                <Select value={sensorType} onValueChange={setSensorType}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="wearable">wearable</SelectItem>
+                    <SelectItem value="collar">collar</SelectItem>
+                    <SelectItem value="ear_tag">ear_tag</SelectItem>
+                    <SelectItem value="environmental">environmental</SelectItem>
+                    <SelectItem value="camera">camera</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-sm font-medium">Assign to animal (optional)</div>
+                <Select
+                  value={assignAnimalId != null ? String(assignAnimalId) : ""}
+                  onValueChange={(v) => setAssignAnimalId(v ? Number(v) : null)}
+                  disabled={animalsQuery.isLoading || animals.length === 0}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={animals.length === 0 ? "No animals" : "Select animal"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {animals.map((a) => (
+                      <SelectItem key={a.id} value={String(a.id)}>
+                        {(a.name && a.name.trim().length > 0 ? a.name : "Unnamed") + " • " + a.tag_id}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setAddOpen(false)} disabled={createMutation.isPending}>
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  if (!canCreate) return;
+                  createMutation.mutate({
+                    device_id: deviceId.trim(),
+                    type: sensorType,
+                    farm_id: activeFarmId as number,
+                    animal_id: assignAnimalId ?? undefined,
+                  });
+                }}
+                disabled={!canCreate || createMutation.isPending}
+              >
+                {createMutation.isPending ? "Saving..." : "Save"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={assignOpen}
+          onOpenChange={(v) => {
+            setAssignOpen(v);
+            if (!v) {
+              setAssignSensorId(null);
+              setAssignToAnimalId(null);
+            }
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Assign Sensor</DialogTitle>
+              <DialogDescription>
+                Choose which animal this sensor belongs to (or set it as unassigned).
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-2">
+              <div className="text-sm font-medium">Animal</div>
+              <Select
+                value={assignToAnimalId != null ? String(assignToAnimalId) : ""}
+                onValueChange={(v) => setAssignToAnimalId(v ? Number(v) : null)}
+                disabled={animalsQuery.isLoading}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Unassigned" />
+                </SelectTrigger>
+                <SelectContent>
+                  {animals.map((a) => (
+                    <SelectItem key={a.id} value={String(a.id)}>
+                      {(a.name && a.name.trim().length > 0 ? a.name : "Unnamed") + " • " + a.tag_id}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setAssignOpen(false)} disabled={assignMutation.isPending}>
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  if (!canAssign) return;
+                  assignMutation.mutate({
+                    sensorId: assignSensorId as number,
+                    animal_id: assignToAnimalId,
+                  });
+                }}
+                disabled={!canAssign || assignMutation.isPending}
+              >
+                {assignMutation.isPending ? "Saving..." : "Save"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         {/* Header */}
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
@@ -60,7 +293,11 @@ export default function Sensors() {
               Monitor and manage IoT sensors across your livestock
             </p>
           </div>
-          <Button className="bg-gradient-earth text-white shadow-md hover:opacity-90">
+          <Button
+            className="bg-gradient-earth text-white shadow-md hover:opacity-90"
+            onClick={() => setAddOpen(true)}
+            disabled={activeFarmId == null}
+          >
             <Plus className="mr-2 h-4 w-4" />
             Add Sensor
           </Button>
@@ -218,6 +455,10 @@ export default function Sensors() {
                         <Button variant="outline" size="sm">
                           <MapPin className="mr-2 h-4 w-4" />
                           Track
+                        </Button>
+
+                        <Button variant="outline" size="sm" onClick={() => openAssign(sensor)}>
+                          {sensor.animal_id ? "Change" : "Assign"}
                         </Button>
                       </div>
                     </div>

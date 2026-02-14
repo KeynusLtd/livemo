@@ -12,6 +12,7 @@ use App\Models\HealthRecord;
 use App\Models\Pasture;
 use App\Models\Sensor;
 use App\Models\SensorReading;
+use App\Models\AnimalCatalog;
 use App\Models\User;
 use App\Models\Vaccination;
 use App\Models\Marketplace\Category;
@@ -170,6 +171,30 @@ class DemoDataSeeder extends Seeder
             ]
         );
 
+        // Seed admin-managed animal catalogs (farmers must select from this list)
+        $catalogSeeds = [
+            ['name' => 'Cattle • Ankole', 'type' => 'cattle', 'breed' => 'Ankole'],
+            ['name' => 'Cattle • Friesian', 'type' => 'cattle', 'breed' => 'Friesian'],
+            ['name' => 'Goats • Boer', 'type' => 'goats', 'breed' => 'Boer'],
+            ['name' => 'Sheep • Merino', 'type' => 'sheep', 'breed' => 'Merino'],
+            ['name' => 'Poultry • Kuroiler', 'type' => 'poultry', 'breed' => 'Kuroiler'],
+            ['name' => 'Swine • Large White', 'type' => 'swine', 'breed' => 'Large White'],
+            ['name' => 'Horses • Arabian', 'type' => 'horses', 'breed' => 'Arabian'],
+            ['name' => 'Goats • Saanen', 'type' => 'goats', 'breed' => 'Saanen'],
+        ];
+
+        $catalogByKey = [];
+        foreach ($catalogSeeds as $seed) {
+            $catalog = AnimalCatalog::firstOrCreate(
+                ['type' => $seed['type'], 'breed' => $seed['breed']],
+                array_merge($seed, [
+                    'is_active' => true,
+                    'created_by' => $admin->id,
+                ])
+            );
+            $catalogByKey[$seed['type'] . '|' . ($seed['breed'] ?? '')] = $catalog;
+        }
+
         // Create demo animals (farm 1)
         $animals = [
             [
@@ -212,9 +237,12 @@ class DemoDataSeeder extends Seeder
 
         $createdAnimals = [];
         foreach ($animals as $animalData) {
+            $catalogKey = $animalData['type'] . '|' . ($animalData['breed'] ?? '');
+            $catalogId = $catalogByKey[$catalogKey]->id ?? null;
+
             $animal = Animal::firstOrCreate(
                 ['tag_id' => $animalData['tag_id']],
-                array_merge($animalData, ['farm_id' => $farm->id])
+                array_merge($animalData, ['farm_id' => $farm->id, 'catalog_id' => $catalogId])
             );
             $createdAnimals[] = $animal;
 
@@ -291,10 +319,25 @@ class DemoDataSeeder extends Seeder
             $breed = $animalBreeds[($i - 1) % count($animalBreeds)];
             $tagId = 'LST' . strtoupper(substr($type, 0, 2)) . str_pad((string) $i, 3, '0', STR_PAD_LEFT);
 
+            $catalogKey = $type . '|' . $breed;
+            if (!isset($catalogByKey[$catalogKey])) {
+                $catalogByKey[$catalogKey] = AnimalCatalog::firstOrCreate(
+                    ['type' => $type, 'breed' => $breed],
+                    [
+                        'name' => ucfirst($type) . ' • ' . $breed,
+                        'type' => $type,
+                        'breed' => $breed,
+                        'is_active' => true,
+                        'created_by' => $admin->id,
+                    ]
+                );
+            }
+
             $createdAnimals[] = Animal::firstOrCreate(
                 ['tag_id' => $tagId],
                 [
                     'farm_id' => $farm->id,
+                    'catalog_id' => $catalogByKey[$catalogKey]->id,
                     'tag_id' => $tagId,
                     'name' => 'Demo ' . ucfirst($type) . ' ' . $i,
                     'type' => $type,
@@ -305,6 +348,144 @@ class DemoDataSeeder extends Seeder
                     'color' => 'Brown',
                     'status' => 'healthy',
                     'health_score' => rand(75, 99),
+                ]
+            );
+        }
+
+        // Ensure: at least 20 animals have sensors + readings + health records (farm 1)
+        $seedAnimals = array_slice($createdAnimals, 0, 20);
+        foreach ($seedAnimals as $idx => $animal) {
+            $batteryLevel = rand(8, 100);
+            $isOffline = ($idx % 9) === 0;
+
+            $sensor = Sensor::firstOrCreate(
+                ['device_id' => 'SENSOR_' . $animal->tag_id],
+                [
+                    'type' => 'collar',
+                    'animal_id' => $animal->id,
+                    'farm_id' => $farm->id,
+                    'status' => 'active',
+                    'battery_level' => $batteryLevel,
+                    'last_communication' => $isOffline ? now()->subHours(rand(4, 96)) : now()->subMinutes(rand(0, 20)),
+                ]
+            );
+
+            // Keep demo sensor state fresh on re-seed
+            $sensor->update([
+                'battery_level' => $batteryLevel,
+                'last_communication' => $isOffline ? now()->subHours(rand(4, 96)) : now()->subMinutes(rand(0, 20)),
+                'status' => 'active',
+            ]);
+
+            $existingReadingsCount = SensorReading::query()->where('sensor_id', $sensor->id)->count();
+            $missingReadings = max(0, 24 - $existingReadingsCount);
+            for ($i = 0; $i < $missingReadings; $i++) {
+                $t = now()->subMinutes(($missingReadings - $i) * 30);
+                $temp = ($idx === 0 && $i >= ($missingReadings - 2)) ? 40.7 : (38.2 + (rand(-5, 8) / 10));
+                $hr = $animal->type === 'cattle' ? rand(55, 75) : rand(70, 95);
+
+                SensorReading::create([
+                    'sensor_id' => $sensor->id,
+                    'farm_id' => $farm->id,
+                    'animal_id' => $animal->id,
+                    'recorded_at' => $t,
+                    'temperature' => $temp,
+                    'heart_rate' => $hr,
+                    'activity_level' => rand(40, 95),
+                    'battery_level' => $sensor->battery_level,
+                    'metadata' => ['source' => 'demo_seeder'],
+                ]);
+            }
+
+            // Ensure at least one recent health record exists per seeded animal
+            $hasHealth = HealthRecord::query()->where('animal_id', $animal->id)->exists();
+            if (!$hasHealth) {
+                $recentTemp = ($idx === 0) ? 40.7 : 38.6;
+                $severity = $recentTemp > 40.0 ? 'critical' : 'normal';
+                HealthRecord::create([
+                    'animal_id' => $animal->id,
+                    'record_type' => 'observation',
+                    'temperature' => $recentTemp,
+                    'heart_rate' => $animal->type === 'cattle' ? 65 : 85,
+                    'activity_level' => rand(55, 95),
+                    'diagnosis' => null,
+                    'symptoms' => null,
+                    'treatment' => null,
+                    'notes' => 'Sensor observation (demo)',
+                    'veterinarian' => null,
+                    'severity' => $severity,
+                ]);
+            }
+
+            // Seed alerts for testing (without real sensors)
+            if ($batteryLevel < 20) {
+                Alert::firstOrCreate(
+                    [
+                        'farm_id' => $farm->id,
+                        'sensor_id' => $sensor->id,
+                        'type' => 'battery_low',
+                        'status' => 'pending',
+                    ],
+                    [
+                        'animal_id' => $animal->id,
+                        'severity' => 'warning',
+                        'title' => 'Low Battery Alert',
+                        'message' => "Sensor {$sensor->device_id} battery is low ({$batteryLevel}%)",
+                        'metadata' => ['source' => 'demo_seeder'],
+                    ]
+                );
+            }
+
+            if ($isOffline) {
+                Alert::firstOrCreate(
+                    [
+                        'farm_id' => $farm->id,
+                        'sensor_id' => $sensor->id,
+                        'type' => 'sensor_offline',
+                        'status' => 'pending',
+                    ],
+                    [
+                        'animal_id' => $animal->id,
+                        'severity' => 'warning',
+                        'title' => 'Sensor Offline',
+                        'message' => "Sensor {$sensor->device_id} has not communicated recently.",
+                        'metadata' => ['source' => 'demo_seeder'],
+                    ]
+                );
+            }
+
+            if ($idx === 0) {
+                Alert::firstOrCreate(
+                    [
+                        'farm_id' => $farm->id,
+                        'sensor_id' => $sensor->id,
+                        'animal_id' => $animal->id,
+                        'type' => 'temperature_high',
+                        'status' => 'pending',
+                    ],
+                    [
+                        'severity' => 'critical',
+                        'title' => 'High Temperature',
+                        'message' => 'High temperature detected. Check the animal immediately.',
+                        'metadata' => ['source' => 'demo_seeder'],
+                    ]
+                );
+            }
+
+            // One vaccination per animal for the first 10 animals (=> 10 vaccinations total)
+            $administeredDate = now()->subMonths(6)->subDays($idx)->toDateString();
+            Vaccination::firstOrCreate(
+                ['animal_id' => $animal->id, 'vaccine_name' => 'FMD Vaccine', 'administered_date' => $administeredDate],
+                [
+                    'vaccine_type' => 'routine',
+                    'batch_number' => 'BATCH-' . strtoupper(Str::random(6)),
+                    'next_due_date' => now()->addMonths(6)->toDateString(),
+                    'administered_by' => 'Dr. Demo',
+                    'dosage' => 2.0,
+                    'dosage_unit' => 'ml',
+                    'administration_route' => 'IM',
+                    'notes' => 'Demo vaccination record',
+                    'is_booster' => false,
                 ]
             );
         }
@@ -339,9 +520,11 @@ class DemoDataSeeder extends Seeder
 
         $farm2CreatedAnimals = [];
         foreach ($farm2Animals as $animalData) {
+            $catalogKey = $animalData['type'] . '|' . ($animalData['breed'] ?? '');
+            $catalogId = $catalogByKey[$catalogKey]->id ?? null;
             $animal = Animal::firstOrCreate(
                 ['tag_id' => $animalData['tag_id']],
-                array_merge($animalData, ['farm_id' => $farm2->id])
+                array_merge($animalData, ['farm_id' => $farm2->id, 'catalog_id' => $catalogId])
             );
             $farm2CreatedAnimals[] = $animal;
 
@@ -693,6 +876,49 @@ class DemoDataSeeder extends Seeder
             ]
         );
 
+        // Expand categories to 20+ so admin + marketplace UIs have real variety
+        $extraCategorySpecs = [
+            // Product categories
+            ['slug' => 'dairy-essentials', 'name' => 'Dairy Essentials', 'description' => 'Milking supplies and dairy accessories', 'type' => 'product'],
+            ['slug' => 'water-systems', 'name' => 'Water Systems', 'description' => 'Drinkers, tanks and plumbing', 'type' => 'product'],
+            ['slug' => 'fencing-and-gates', 'name' => 'Fencing & Gates', 'description' => 'Perimeter and pasture control', 'type' => 'product'],
+            ['slug' => 'biosecurity', 'name' => 'Biosecurity', 'description' => 'Hygiene, disinfectants, PPE', 'type' => 'product'],
+            ['slug' => 'barn-and-housing', 'name' => 'Barn & Housing', 'description' => 'Stalls, bedding and shelters', 'type' => 'product'],
+            ['slug' => 'genetics-and-breeding', 'name' => 'Genetics & Breeding', 'description' => 'Breeding tools and supplies', 'type' => 'product'],
+            ['slug' => 'vaccines', 'name' => 'Vaccines', 'description' => 'Preventive vaccines and protocols', 'type' => 'product'],
+            ['slug' => 'parasite-control', 'name' => 'Parasite Control', 'description' => 'Tick, flea and parasite control', 'type' => 'product'],
+            ['slug' => 'hoof-care', 'name' => 'Hoof Care', 'description' => 'Trimming tools and treatments', 'type' => 'product'],
+            ['slug' => 'weighing-and-id', 'name' => 'Weighing & ID', 'description' => 'Scales, tags and identification', 'type' => 'product'],
+            ['slug' => 'storage-and-handling', 'name' => 'Storage & Handling', 'description' => 'Bins, pallets, handling tools', 'type' => 'product'],
+            ['slug' => 'veterinary-tools', 'name' => 'Veterinary Tools', 'description' => 'Basic tools for farm vet care', 'type' => 'product'],
+
+            // Service categories
+            ['slug' => 'vet-services', 'name' => 'Veterinary Services', 'description' => 'On-site visits and consultations', 'type' => 'service'],
+            ['slug' => 'transport-services', 'name' => 'Transport Services', 'description' => 'Livestock and goods transport', 'type' => 'service'],
+            ['slug' => 'farm-consulting', 'name' => 'Farm Consulting', 'description' => 'Operations and nutrition consulting', 'type' => 'service'],
+            ['slug' => 'equipment-repair', 'name' => 'Equipment Repair', 'description' => 'Repairs and maintenance', 'type' => 'service'],
+            ['slug' => 'training', 'name' => 'Training', 'description' => 'Workshops and staff training', 'type' => 'service'],
+            ['slug' => 'inspection-and-certification', 'name' => 'Inspection & Certification', 'description' => 'Certification and compliance services', 'type' => 'service'],
+        ];
+
+        $extraProductCategories = [];
+        foreach ($extraCategorySpecs as $idx => $spec) {
+            $c = Category::firstOrCreate(
+                ['slug' => $spec['slug']],
+                [
+                    'name' => $spec['name'],
+                    'description' => $spec['description'],
+                    'type' => $spec['type'],
+                    'order' => 10 + $idx,
+                    'is_active' => true,
+                ]
+            );
+
+            if ($c->type === 'product') {
+                $extraProductCategories[] = $c;
+            }
+        }
+
         $productImageUrls = [
             'https://images.unsplash.com/photo-1542838132-92c53300491e?w=800&h=600&fit=crop',
             'https://images.unsplash.com/photo-1589923188900-85dae523342b?w=800&h=600&fit=crop',
@@ -702,7 +928,7 @@ class DemoDataSeeder extends Seeder
             'https://images.unsplash.com/photo-1599045118108-bf9954418b76?w=800&h=600&fit=crop',
         ];
 
-        $productCategories = [$feedCategory, $healthCategory, $equipmentCategory, $supplementsCategory];
+        $productCategories = array_merge([$feedCategory, $healthCategory, $equipmentCategory, $supplementsCategory], $extraProductCategories);
         for ($i = 3; $i <= 22; $i++) {
             $cat = $productCategories[($i - 3) % count($productCategories)];
             $sku = 'PROD-' . str_pad((string) $i, 3, '0', STR_PAD_LEFT);
